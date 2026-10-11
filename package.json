@@ -1,6 +1,6 @@
 {
   "name": "capicoin-server",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "description": "Servidor do Capi Coin: contas, banco de dados, jogo online, amigos e PIX Mercado Pago",
   "main": "server.js",
   "private": true,

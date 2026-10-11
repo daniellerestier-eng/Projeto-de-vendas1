@@ -72,3 +72,15 @@ npm test
 ```
 
 São 27 testes ponta a ponta, incluindo o fluxo de PIX com um Mercado Pago simulado.
+
+
+## SEGURANÇA (v4.3)
+- Sessões salvas como hash SHA-256 no banco (um vazamento do banco não entrega logins); sessões antigas migram sozinhas.
+- Sessões sem uso por 60 dias expiram.
+- Bloqueio de 15 minutos após 8 senhas erradas no mesmo e-mail.
+- Limite de requisições por IP (usando o IP real do proxy do Railway, que não pode ser falsificado pelo cliente) e por usuário.
+- Login com Google no estilo PKCE: o navegador nunca leva o token de sessão; o app troca um código de uso único
+  pelo token usando um segredo que só ele tem. Vincular Google usa código de uso único (o token não vai mais na URL).
+- Cabeçalhos de segurança (nosniff, frame DENY, no-referrer, HSTS).
+- Recomendado: gere um novo GOOGLE_CLIENT_SECRET no Google Cloud (o antigo foi compartilhado em conversa) e
+  atualize a variável no Railway.

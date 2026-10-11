@@ -65,21 +65,22 @@ function createServer(cfg = config()) {
   };
 
   // ---------------------------------------------------------------- public
-  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: 4.2, payments: pay.enabled(), google: auth.googleEnabled() }));
+  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: 4.3, payments: pay.enabled(), google: auth.googleEnabled() }));
 
   POST('/auth/guest', { rate: [20, 60e3] }, async (ctx) => auth.guest(ctx.body.deviceId, ctx.body.name, Date.now()));
   POST('/auth/register', { rate: [10, 60e3] }, async (ctx) => auth.register(ctx.body.email, ctx.body.password, ctx.body.name, ctx.userId, Date.now()));
-  POST('/auth/login', { rate: [15, 60e3] }, async (ctx) => auth.login(ctx.body.email, ctx.body.password, Date.now()));
+  POST('/auth/login', { rate: [40, 60e3] }, async (ctx) => auth.login(ctx.body.email, ctx.body.password, Date.now()));
   POST('/auth/logout', { auth: true }, async (ctx) => { auth.logout(ctx.token); return { ok: true }; });
   GET('/auth/google/start', { rate: [20, 60e3] }, async (ctx) => {
-    let link = null;
-    if (ctx.query.link) link = auth.resolve(ctx.query.link);
-    try { return { redirect: auth.googleStart(link) }; }
+    const link = ctx.query.link ? auth.takeLinkCode(ctx.query.link) : null;
+    try { return { redirect: auth.googleStart(link, ctx.query.c) }; }
     catch (e) { return { html: auth.bouncePage('', e.message), status: 200 }; }
   });
-  GET('/auth/google/callback', {}, async (ctx) => {
+  POST('/auth/google/link', { auth: true, rate: [10, 60e3] }, async (ctx) => ({ code: auth.linkCode(ctx.userId) }));
+  POST('/auth/google/exchange', { rate: [20, 60e3] }, async (ctx) => auth.googleExchange(ctx.body.code, ctx.body.verifier, Date.now()));
+  GET('/auth/google/callback', { rate: [20, 60e3] }, async (ctx) => {
     if (ctx.query.error) return { html: auth.bouncePage('', 'Login cancelado.') };
-    try { const r = await auth.googleCallback(String(ctx.query.code || ''), String(ctx.query.state || ''), Date.now()); return { html: auth.bouncePage(r.token) }; }
+    try { const r = await auth.googleCallback(String(ctx.query.code || ''), String(ctx.query.state || ''), Date.now()); return { html: auth.bouncePage(r.code) }; }
     catch (e) { console.error('[google]', e.message); return { html: auth.bouncePage('', e.message || 'Falha no login com Google.') }; }
   });
 
@@ -156,35 +157,42 @@ function createServer(cfg = config()) {
     const url = new URL(req.url, 'http://x');
     const send = (status, obj, extraHeaders = {}) => {
       const body = typeof obj === 'string' ? obj : JSON.stringify(obj);
-      res.writeHead(status, { 'Content-Type': typeof obj === 'string' ? 'text/html; charset=utf-8' : 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extraHeaders });
+      res.writeHead(status, {
+        'Content-Type': typeof obj === 'string' ? 'text/html; charset=utf-8' : 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
+        'Strict-Transport-Security': 'max-age=15552000', ...extraHeaders });
       res.end(body);
     };
     try {
       const r = routes.find((x) => x.method === req.method && x.re.test(url.pathname));
       if (!r) return send(404, { error: 'not_found', message: 'Rota não encontrada.' });
-      const ip = (req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+      const xff = (req.headers['x-forwarded-for'] || '').toString().split(',').map((x) => x.trim()).filter(Boolean);
+      const ip = (xff.length ? xff[xff.length - 1] : (req.socket.remoteAddress || '')).slice(0, 64);
       if (r.rate && limited(ip, url.pathname, r.rate[0], r.rate[1])) return send(429, { error: 'rate_limited', message: 'Muitas tentativas. Espere um pouco.' });
+      if (limited(ip, '*', 3000, 60e3)) return send(429, { error: 'rate_limited', message: 'Muitas requisições. Espere um pouco.' });
       const m = url.pathname.match(r.re);
-      const params = {}; r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
+      const params = {}; try { r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); }); } catch (_) { return send(400, { error: 'bad_request', message: 'Pedido inválido.' }); }
       let body = {};
       if (req.method === 'POST') {
         const chunks = []; let size = 0;
         for await (const c of req) { size += c.length; if (size > 200_000) throw err(413, 'too_big', 'Pedido muito grande.'); chunks.push(c); }
         const raw = Buffer.concat(chunks).toString('utf8');
         if (raw) { try { body = JSON.parse(raw); } catch (_) { body = Object.fromEntries(new URLSearchParams(raw)); } }
+        if (!body || typeof body !== 'object' || Array.isArray(body)) body = {};
       }
       const tok = (req.headers.authorization || '').replace(/^Bearer\s+/i, '') || null;
       const userId = tok ? auth.resolve(tok) : null;
       if (r.auth && !userId) return send(401, { error: 'unauthorized', message: 'Faça login novamente.' });
+      if (userId && limited('u' + userId, '*', 600, 60e3)) return send(429, { error: 'rate_limited', message: 'Muitas requisições. Espere um pouco.' });
       const ctx = { req, params, query: Object.fromEntries(url.searchParams), body: body || {}, headers: req.headers, token: tok, userId, ip };
       const out = await r.handler(ctx);
-      if (out && out.redirect) { res.writeHead(302, { Location: out.redirect }); return res.end(); }
+      if (out && out.redirect) { res.writeHead(302, { Location: out.redirect, 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }); return res.end(); }
       if (out && out.html) return send(out.status || 200, out.html);
       send(200, out);
     } catch (e) {
       if (e instanceof ApiError) return send(e.status, { error: e.code, message: e.message });
       console.error('[erro]', req.method, url.pathname, e);
-      send(500, { error: 'server_error', message: 'Erro no servidor.' });
+      send(500, { error: 'server_error', message: 'Algo deu errado no servidor. Tente novamente.' });
     } finally {
       if (process.env.LOG_REQUESTS) console.log(req.method, url.pathname, res.statusCode, Date.now() - started + 'ms');
     }

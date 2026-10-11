@@ -29,7 +29,8 @@ const THEMES = [ // Rio de Janeiro edition: 15 islands, each with its own 5 buil
   ['Paquetá', ['Casinha de Paquetá', 'Farol da Ilha', 'Estação das Barcas', 'Peixaria', 'Castelinho']],
   ['Centro do Rio', ['Sobrado do Centro', 'Torre do Relógio', 'Bonde VLT', 'Confeitaria', 'Museu do Futuro']],
 ];
-const themeOf = (v) => THEMES[(v - 1) % THEMES.length];
+const MAX_VILLAGE = 15; // 15 unique Rio islands, then the game is beaten
+const themeOf = (v) => THEMES[Math.min(Math.max(v, 1), MAX_VILLAGE) - 1];
 
 const PETS = {
   quati: { name: 'Quati Fuçador', role: 'raid', unlockVillage: 2, gemCost: 300, desc: '+1 buraco e mais moedas nos saques' },
@@ -240,6 +241,7 @@ class Game {
     const st = JSON.parse(row.state);
     if (!st.recentTargets) st.recentTargets = [];
     if (st.tickets === undefined) st.tickets = 1;
+    if (st.village > MAX_VILLAGE) { st.village = MAX_VILLAGE; st.levels = [5, 5, 5, 5, 5]; st.damaged = [false, false, false, false, false]; st.finished = true; }
     if (typeof st.ticketProg !== 'number') st.ticketProg = (st.stats && st.stats.spins ? st.stats.spins % TICKET_EVERY_SPINS : 0);
     if (!st.timed) st.timed = { day: -1, idx: 0, nextAt: 0 };
     if (!st.lastRaidCheck) st.lastRaidCheck = Date.now();
@@ -427,7 +429,7 @@ class Game {
       shields: st.shields, maxShields: MAX_SHIELDS, village: st.village, themeName: th[0], buildingNames: th[1],
       levels: st.levels, damaged: st.damaged, maxLevel: MAX_LEVEL,
       costs: st.levels.map((l, i) => (st.damaged[i] ? repairCost(st, i) : l >= MAX_LEVEL ? 0 : buildCost(st, i))),
-      complete: villageComplete(st), bet: st.bet, bets: BETS,
+      complete: villageComplete(st), finished: !!st.finished, maxVillage: MAX_VILLAGE, bet: st.bet, bets: BETS,
       petiscos: st.petiscos, activePet: st.activePet, petAwakeMs: Math.max(0, st.petAwakeUntil - now),
       pets: Object.fromEntries(Object.entries(PETS).map(([k, d]) => [k, {
         ...d, unlocked: st.pets[k].unlocked, level: st.pets[k].level, xp: st.pets[k].xp, xpNext: st.pets[k].level * 5,
@@ -531,6 +533,15 @@ class Game {
   nextVillage(u, now) {
     const st = u.st;
     if (!villageComplete(st)) throw err(409, 'not_complete', 'Termine a vila primeiro.');
+    if (st.village >= MAX_VILLAGE) {
+      // last island: the Rio is conquered. One big prize, then the player keeps playing (attacks, raids, minigames, ranking).
+      if (st.finished) throw err(409, 'finished', 'Você já conquistou o Rio inteiro!');
+      const prize = { spins: 300, gems: 200, tickets: 10 };
+      st.finished = true; st.stats.villages++;
+      const got = applyGive(st, prize, now);
+      this.save(u, now);
+      return { village: st.village, finished: true, reward: got, unlockedPets: [], themeName: themeOf(st.village)[0] };
+    }
     const reward = { spins: 30 + st.village * 5, gems: 10 };
     st.village++;
     st.levels = [0, 0, 0, 0, 0]; st.damaged = [false, false, false, false, false];

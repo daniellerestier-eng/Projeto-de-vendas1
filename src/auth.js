@@ -15,6 +15,10 @@ function checkPassword(pw, stored) {
   return b.length === h.length && crypto.timingSafeEqual(b, h);
 }
 
+const sha = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
+const sessKey = (t) => 'h:' + sha(t);   // stored form of a session token
+const SESSION_TTL = 60 * 86400e3;
+const MAX_FAILS = 8, FAIL_WINDOW = 15 * 60e3;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const cleanName = (n, fallback) => {
   const s = String(n || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 18);
@@ -25,8 +29,12 @@ class Auth {
   constructor(db, game, cfg) {
     this.db = db; this.game = game; this.cfg = cfg;
     this.oauthStates = new Map();
+    this.oauthCodes = new Map();   // one-time codes handed to the app after Google login
+    this.linkCodes = new Map();    // one-time codes to link Google to the current account
+    this.fails = new Map();        // failed logins per e-mail
+    this.lastSweep = 0;
     this.q = {
-      session: db.prepare('SELECT s.token, s.user_id FROM sessions s WHERE s.token = ?'),
+      session: db.prepare('SELECT s.token, s.user_id, s.last_used FROM sessions s WHERE s.token = ?'),
       touch: db.prepare('UPDATE sessions SET last_used = ? WHERE token = ?'),
       newSession: db.prepare('INSERT INTO sessions (token, user_id, created_at, last_used) VALUES (?,?,?,?)'),
       delSession: db.prepare('DELETE FROM sessions WHERE token = ?'),
@@ -36,22 +44,31 @@ class Auth {
     };
   }
 
+  /** Sessions are stored as SHA-256 hashes: a leaked database does not leak usable logins. */
   session(userId, now = Date.now()) {
     const t = token();
-    this.q.newSession.run(t, userId, now, now);
+    this.q.newSession.run(sessKey(t), userId, now, now);
     return t;
   }
 
-  /** Returns user id for a bearer token or null. */
+  /** Returns user id for a bearer token or null. Sessions unused for 60 days expire. */
   resolve(tok, now = Date.now()) {
-    if (!tok) return null;
-    const s = this.q.session.get(tok);
+    if (!tok || typeof tok !== 'string' || tok.length > 200) return null;
+    const h = sessKey(tok);
+    let s = this.q.session.get(h);
+    if (!s && !tok.startsWith('h:')) { // sessions created before hashing: migrate on first use
+      s = this.q.session.get(tok);
+      if (s && String(s.token).startsWith('h:')) s = null;
+      if (s) this.db.prepare('UPDATE sessions SET token = ? WHERE token = ?').run(h, tok);
+    }
     if (!s) return null;
-    this.q.touch.run(now, tok);
+    if (now - (s.last_used || now) > SESSION_TTL) { this.q.delSession.run(h); return null; }
+    if (now - (s.last_used || 0) > 60e3) this.q.touch.run(now, h);
+    if (now - this.lastSweep > 6 * 3600e3) { this.lastSweep = now; this.db.prepare('DELETE FROM sessions WHERE last_used < ?').run(now - SESSION_TTL); }
     return s.user_id;
   }
 
-  logout(tok) { this.q.delSession.run(tok); }
+  logout(tok) { if (tok && !String(tok).startsWith('h:')) { this.q.delSession.run(sessKey(tok)); this.q.delSession.run(tok); } }
 
   guest(deviceId, name, now) {
     const dev = String(deviceId || '').slice(0, 80);
@@ -69,6 +86,7 @@ class Auth {
     email = String(email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) throw err(400, 'bad_email', 'E-mail inválido.');
     if (String(password || '').length < 6) throw err(400, 'weak_password', 'A senha precisa de pelo menos 6 caracteres.');
+    if (String(password).length > 200) throw err(400, 'weak_password', 'Senha longa demais.');
     if (this.q.byEmail.get(email)) throw err(409, 'email_taken', 'Este e-mail já tem conta. Faça login.');
     const hash = hashPassword(String(password));
     if (currentUserId) {
@@ -83,9 +101,17 @@ class Auth {
   }
 
   login(email, password, now) {
-    email = String(email || '').trim().toLowerCase();
+    email = String(email || '').trim().toLowerCase().slice(0, 200);
+    const f = this.fails.get(email);
+    if (f && now - f.at < FAIL_WINDOW && f.n >= MAX_FAILS) throw err(429, 'locked_out', 'Muitas tentativas com este e-mail. Tente de novo em 15 minutos.');
     const row = this.q.byEmail.get(email);
-    if (!row || !checkPassword(String(password || ''), row.pass_hash)) throw err(401, 'bad_login', 'E-mail ou senha incorretos.');
+    if (!row || !checkPassword(String(password || '').slice(0, 200), row.pass_hash)) {
+      const cur = f && now - f.at < FAIL_WINDOW ? f : { n: 0, at: now };
+      cur.n++; this.fails.set(email, cur);
+      if (this.fails.size > 20000) for (const [k, v] of this.fails) if (now - v.at > FAIL_WINDOW) this.fails.delete(k);
+      throw err(401, 'bad_login', 'E-mail ou senha incorretos.');
+    }
+    this.fails.delete(email);
     return { token: this.session(row.id, now), userId: row.id };
   }
 
@@ -93,12 +119,25 @@ class Auth {
   googleEnabled() { return !!(this.cfg.googleClientId && this.cfg.googleClientSecret); }
   googleRedirectUri() { return this.cfg.publicUrl.replace(/\/$/, '') + '/auth/google/callback'; }
 
-  googleStart(linkUserId) {
+  /** One-time code (5 min) so the browser never carries the session token when linking Google. */
+  linkCode(userId, now = Date.now()) {
+    for (const [k, v] of this.linkCodes) if (now - v.at > 5 * 60e3) this.linkCodes.delete(k);
+    const c = token(16); this.linkCodes.set(c, { at: now, userId }); return c;
+  }
+  takeLinkCode(c, now = Date.now()) {
+    const v = this.linkCodes.get(String(c || '')); if (!v) return null;
+    this.linkCodes.delete(String(c)); return now - v.at <= 5 * 60e3 ? v.userId : null;
+  }
+
+  /** [challenge] = sha256(verifier) made by the app; only the app that started the login can redeem the result. */
+  googleStart(linkUserId, challenge) {
     if (!this.googleEnabled()) throw err(501, 'google_disabled', 'Login com Google indisponível no momento.');
+    if (!/^[a-f0-9]{64}$/.test(String(challenge || ''))) throw err(400, 'old_app', 'Atualize o Capi Coin para entrar com o Google.');
     const state = token(16);
     const now = Date.now();
     for (const [k, v] of this.oauthStates) if (now - v.at > 15 * 60e3) this.oauthStates.delete(k);
-    this.oauthStates.set(state, { at: now, link: linkUserId || null });
+    if (this.oauthStates.size > 5000) throw err(429, 'rate_limited', 'Muitas tentativas. Espere um pouco.');
+    this.oauthStates.set(state, { at: now, link: linkUserId || null, challenge: String(challenge) });
     const p = new URLSearchParams({
       client_id: this.cfg.googleClientId, redirect_uri: this.googleRedirectUri(), response_type: 'code',
       scope: 'openid email profile', state, prompt: 'select_account',
@@ -108,7 +147,7 @@ class Auth {
 
   async googleCallback(code, state, now) {
     const st = this.oauthStates.get(state);
-    if (!st) throw err(400, 'bad_state', 'Sessão de login expirada. Tente de novo.');
+    if (!st || now - st.at > 15 * 60e3) throw err(400, 'bad_state', 'Sessão de login expirada. Tente de novo.');
     this.oauthStates.delete(state);
     const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -135,12 +174,25 @@ class Auth {
       const id = this.game.createUser({ name: cleanName(payload.given_name || payload.name, 'Capi'), email, googleSub: sub, now });
       row = { id };
     }
-    return { token: this.session(row.id, now), userId: row.id };
+    // hand the app a one-time code bound to its challenge instead of the session token
+    for (const [k, v] of this.oauthCodes) if (now - v.at > 5 * 60e3) this.oauthCodes.delete(k);
+    const oneTime = token(24);
+    this.oauthCodes.set(oneTime, { at: now, userId: row.id, challenge: st.challenge });
+    return { code: oneTime, userId: row.id };
+  }
+
+  /** App redeems the one-time code with its verifier. */
+  googleExchange(code, verifier, now) {
+    const v = this.oauthCodes.get(String(code || ''));
+    if (!v) throw err(400, 'bad_code', 'Login expirado. Tente de novo.');
+    this.oauthCodes.delete(String(code));
+    if (now - v.at > 5 * 60e3 || sha(String(verifier || '')) !== v.challenge) throw err(400, 'bad_code', 'Login expirado. Tente de novo.');
+    return { token: this.session(v.userId, now), userId: v.userId };
   }
 
   /** HTML page that bounces the browser back into the app. */
-  bouncePage(tok, message) {
-    const url = `${this.cfg.appScheme}://login?token=${encodeURIComponent(tok || '')}${message ? '&error=' + encodeURIComponent(message) : ''}`;
+  bouncePage(code, message) {
+    const url = `${this.cfg.appScheme}://login?code=${encodeURIComponent(code || '')}${message ? '&error=' + encodeURIComponent(message) : ''}`;
     const safe = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Capi Coin</title><meta http-equiv="refresh" content="0;url=${safe(url)}">
