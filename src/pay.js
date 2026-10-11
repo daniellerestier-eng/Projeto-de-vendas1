@@ -58,7 +58,7 @@ class Payments {
   }
 
   async createPix(u, itemId, now = Date.now()) {
-    if (!this.enabled()) throw err(503, 'payments_off', 'Pagamentos não configurados no servidor (MP_ACCESS_TOKEN).');
+    if (!this.enabled()) throw err(503, 'payments_off', 'Pagamentos indisponíveis no momento. Tente mais tarde.');
     const it = CATALOG.find((c) => c.id === itemId);
     if (!it) throw err(400, 'bad_item', 'Item inválido.');
     if (it.once && u.st.starterBought) throw err(409, 'once', 'Essa oferta só pode ser comprada uma vez.');

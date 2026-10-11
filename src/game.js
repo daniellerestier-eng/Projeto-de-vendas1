@@ -9,18 +9,25 @@ const MAX_SHIELDS = 3;
 const MAX_LEVEL = 5;
 const BETS = [1, 2, 3, 5, 10, 20, 50, 100];
 const PET_AWAKE_MS = 4 * 3600 * 1000;
-const SYM = { COIN: 0, BAG: 1, RAID: 2, HAMMER: 3, SHIELD: 4, ENERGY: 5, CAPI: 6, GEM: 7 };
-const SYM_COUNT = 8;
+const SYM = { COIN: 0, BAG: 1, RAID: 2, HAMMER: 3, SHIELD: 4, ENERGY: 5, CAPI: 6, GEM: 7, TICKET: 8 };
+const SYM_COUNT = 9;
 
-const THEMES = [
-  ['Selva Amazônica', ['Cabana da Capi', 'Torre do Tucano', 'Estátua da Capi', 'Feira de Frutas', 'Templo Perdido']],
-  ['Praia Dourada', ['Casa de Praia', 'Farol', 'Estátua da Capi', 'Quiosque de Coco', 'Castelo de Areia']],
-  ['Deserto dos Faraós', ['Casa de Barro', 'Obelisco', 'Esfinge da Capi', 'Bazar', 'Pirâmide Dourada']],
-  ['Montanha Nevada', ['Chalé Quentinho', 'Torre de Gelo', 'Estátua de Gelo', 'Loja de Chocolate', 'Palácio de Cristal']],
-  ['Vulcão Ardente', ['Forja', 'Torre de Obsidiana', 'Estátua de Magma', 'Mercado de Rubis', 'Fortaleza do Dragão']],
-  ['Reino dos Doces', ['Casa de Biscoito', 'Torre Pirulito', 'Estátua de Chiclete', 'Sorveteria', 'Castelo de Bolo']],
-  ['Cidade Neon', ['Apartamento Neon', 'Arranha-céu', 'Holo-Capi', 'Fliperama', 'Mega Cassino']],
-  ['Ilha Pirata', ['Taverna', 'Mastro Vigia', 'Estátua do Capitão', 'Banca do Tesouro', 'Fortaleza Pirata']],
+const THEMES = [ // Rio de Janeiro edition: 15 islands, each with its own 5 buildings
+  ['Morro da Capi', ['Barraco Colorido', "Caixa d'Água", 'Laje do Baile', 'Birosca', 'Quadra de Samba']],
+  ['Copacabana', ['Prédio da Orla', 'Posto Salva-Vidas', 'Quiosque de Coco', 'Barraca de Praia', 'Palace Hotel']],
+  ['Ipanema', ['Casa do Surfista', 'Mirante do Arpoador', 'Banca de Jornal', 'Feira Hippie', 'Surf Shop']],
+  ['Pão de Açúcar', ['Casa da Urca', 'Estação do Bondinho', 'Mirante da Urca', 'Cais dos Pescadores', 'Morro do Bondinho']],
+  ['Corcovado', ['Chalé da Serra', 'Trenzinho', 'Capela da Mata', 'Loja de Lembranças', 'Capi Redentora']],
+  ['Lapa', ['Sobrado Colonial', 'Arcos da Lapa', 'Escadaria de Azulejos', 'Bar do Samba', 'Catedral Cônica']],
+  ['Santa Teresa', ['Casarão', 'Bondinho Amarelo', 'Ateliê do Artista', 'Boteco da Ladeira', 'Parque das Ruínas']],
+  ['Maracanã', ['Casa do Torcedor', 'Torre de Refletores', 'Churrasquinho', 'Loja de Camisas', 'Estádio']],
+  ['Sambódromo', ['Barracão da Escola', 'Arquibancada', 'Carro Alegórico', 'Ateliê de Fantasias', 'Arco da Apoteose']],
+  ['Jardim Botânico', ['Estufa', 'Palmeiras Imperiais', 'Chafariz', 'Orquidário', 'Lago das Vitórias-Régias']],
+  ['Floresta da Tijuca', ['Casa na Árvore', 'Cascatinha', 'Mirante da Mata', 'Capelinha', 'Vista Chinesa']],
+  ['São Conrado', ['Casa de Vidro', 'Rampa de Voo Livre', 'Quiosque de Açaí', 'Hotel Redondo', 'Pedra da Gávea']],
+  ['Barra da Tijuca', ['Condomínio', 'Torre Espelhada', 'Lagoa dos Pedalinhos', 'Food Truck', 'Arena']],
+  ['Paquetá', ['Casinha de Paquetá', 'Farol da Ilha', 'Estação das Barcas', 'Peixaria', 'Castelinho']],
+  ['Centro do Rio', ['Sobrado do Centro', 'Torre do Relógio', 'Bonde VLT', 'Confeitaria', 'Museu do Futuro']],
 ];
 const themeOf = (v) => THEMES[(v - 1) % THEMES.length];
 
@@ -41,7 +48,7 @@ const costMult = (v) => Math.pow(1.56, v - 1) * (1 + 0.04 * (v - 1));
 function buildCost(st, slot, level = st.levels[slot]) {
   return roundNice(2600 * (1 + level * 0.75) * (1 + slot * 0.14) * costMult(st.village));
 }
-function repairCost(st, slot) { return roundNice(buildCost(st, slot, Math.max(0, st.levels[slot] - 1)) * 0.35); }
+function repairCost(st, slot) { return roundNice(buildCost(st, slot, st.levels[slot]) * 0.5); } // rebuild the level an attack knocked down, half price
 const villageProgress = (st) => st.levels.reduce((a, b) => a + b, 0);
 const villageComplete = (st) => st.levels.every((l) => l >= MAX_LEVEL) && st.damaged.every((d) => !d);
 
@@ -56,6 +63,7 @@ function newState(now) {
     stats: { spins: 0, attacks: 0, raids: 0, builds: 0, bestWin: 0, villages: 0, blocks: 0 },
     pending: { attack: null, raid: null },
     starterBought: false, giftsCollectedDay: -1, giftsCollectedToday: 0,
+    recentTargets: [], tickets: 3, ticketProg: 6, trail: null, timed: { day: -1, idx: 0, nextAt: 0 }, lastRaidCheck: now, mini: null,
   };
 }
 
@@ -99,6 +107,52 @@ const MISSION_POOL = [
 ];
 const MISSION_REWARDS = [{ spins: 15 }, { spins: 20 }, { spins: 25 }, { gems: 5 }, { gems: 8 }, { petiscos: 1 }];
 const ALL_MISSIONS_BONUS = { spins: 40, gems: 10 };
+// free prize ladder: the first one 5 minutes after the day starts, each next one a bit later (resets daily)
+const TIMED = [
+  { min: 5, give: { spins: 5 } }, { min: 10, give: { coinsVm: 4000 } }, { min: 15, give: { spins: 10 } },
+  { min: 20, give: { coinsVm: 9000, gems: 2 } }, { min: 30, give: { spins: 15, tickets: 1 } }, { min: 45, give: { coinsVm: 20000 } },
+  { min: 60, give: { spins: 25, gems: 5 } }, { min: 90, give: { spins: 30, tickets: 1 } },
+];
+const MAX_TICKETS = 15;
+const TICKET_EVERY_SPINS = 30;      // every 30 spins used (a x3 bet uses 3) fills the ticket bar...
+const TICKETS_PER_GOAL = 5;         // ...and pays 5 tickets
+const TICKET_DROP_CHANCE = 0.20;    // plus a 20% chance of +1 ticket on any spin
+// Daily party: one bonus per day, rotating (Brazil day). Gives players a reason to come back every day.
+const DAILY_EVENTS = [
+  { id: 'martelo', name: 'Dia do Martelo', desc: 'Todo ataque rende o dobro de moedas hoje.' },
+  { id: 'saque', name: 'Dia do Saque', desc: 'Todo saque rende 50% a mais de moedas hoje.' },
+  { id: 'ficha', name: 'Dia da Ficha', desc: 'A barra de fichas paga 8 fichas e a chance de ficha na roleta sobe para 35%.' },
+  { id: 'moedas', name: 'Chuva de Moedas', desc: 'Trincas de moedas e de sacos valem o dobro hoje.' },
+  { id: 'festa', name: 'Festa nos Minigames', desc: 'Os minigames pagam o dobro de moedas hoje.' },
+];
+function dailyEvent(now) { const d = dayOf(now); return DAILY_EVENTS[((d % DAILY_EVENTS.length) + DAILY_EVENTS.length) % DAILY_EVENTS.length]; }
+function ticketsPerGoal(now) { return dailyEvent(now).id === 'ficha' ? 8 : TICKETS_PER_GOAL; }
+function ticketChance(now) { return dailyEvent(now).id === 'ficha' ? 0.35 : TICKET_DROP_CHANCE; }
+// Daily party trail: every spin adds points (= spins used); each milestone pays automatically. Resets every day.
+const TRAIL = [
+  { pts: 10, give: { coinsVm: 2500 } }, { pts: 30, give: { spins: 10 } }, { pts: 60, give: { tickets: 2 } },
+  { pts: 100, give: { coinsVm: 12000, gems: 2 } }, { pts: 160, give: { spins: 25 } }, { pts: 240, give: { tickets: 4, gems: 3 } },
+  { pts: 340, give: { coinsVm: 40000, spins: 40 } }, { pts: 480, give: { spins: 60, gems: 10, tickets: 5 } },
+];
+function trailFix(st, now) { const d = dayOf(now); if (!st.trail || st.trail.day !== d) st.trail = { day: d, pts: 0, idx: 0 }; }
+function trailAdd(st, n, now) {
+  trailFix(st, now);
+  st.trail.pts += n;
+  const got = [];
+  while (st.trail.idx < TRAIL.length && st.trail.pts >= TRAIL[st.trail.idx].pts) { got.push({ step: st.trail.idx + 1, give: applyGive(st, TRAIL[st.trail.idx].give, now) }); st.trail.idx++; }
+  return got;
+}
+function trailInfo(st, now) {
+  trailFix(st, now);
+  const i = st.trail.idx, done = i >= TRAIL.length;
+  return { pts: st.trail.pts, idx: i, steps: TRAIL.length, from: i > 0 ? TRAIL[i - 1].pts : 0, to: done ? TRAIL[TRAIL.length - 1].pts : TRAIL[i].pts, next: done ? null : (TRAIL[i].give.coinsVm ? { ...TRAIL[i].give, coinsVm: undefined, coins: roundNice(TRAIL[i].give.coinsVm * rewardMult(st.village)) } : TRAIL[i].give), endsMs: msToNextDay(now) };
+}
+// Rio minigames. score caps + per-second caps keep the rewards honest even if a client lies.
+const MINI = {
+  futevolei: { name: 'Altinha em Copacabana', dur: 30, cap: 90, perSec: 4, coins: 450, spinEvery: 12 },
+  bloco: { name: 'Bloco de Carnaval', dur: 35, cap: 140, perSec: 6, coins: 300, spinEvery: 20 },
+  bondinho: { name: 'Bondinho do Pão de Açúcar', dur: 20, cap: 300, perSec: 60, coins: 45, spinEvery: 60 },
+};
 const STREAK = [{ spins: 10 }, { spins: 15 }, { spins: 20, gems: 5 }, { spins: 25 }, { spins: 30, petiscos: 1 }, { spins: 40, gems: 10 }, { spins: 60, gems: 20, petiscos: 2 }];
 
 function ensureMissions(st, userId, now) {
@@ -129,17 +183,18 @@ function applyGive(st, give, now) {
   if (g.gems) st.gems += g.gems;
   if (g.petiscos) st.petiscos += g.petiscos;
   if (g.shields) st.shields = Math.min(MAX_SHIELDS, st.shields + g.shields);
+  if (g.tickets) st.tickets = Math.min(MAX_TICKETS, (st.tickets || 0) + g.tickets);
   return g;
 }
 
 // ------------------------------------------------------------------ slot machine
 function randomSym() {
-  const w = [30, 14, 10, 14, 10, 10, 4, 5];
+  const w = [30, 14, 10, 14, 10, 10, 4, 5, 6];
   let x = randInt(w.reduce((a, b) => a + b, 0));
   for (let i = 0; i < w.length; i++) { x -= w[i]; if (x < 0) return i; }
   return 0;
 }
-const TRIPLES = [[0.100, SYM.HAMMER], [0.055, SYM.RAID], [0.060, SYM.SHIELD], [0.055, SYM.ENERGY], [0.035, SYM.BAG], [0.065, SYM.COIN], [0.015, SYM.GEM], [0.006, SYM.CAPI]];
+const TRIPLES = [[0.100, SYM.HAMMER], [0.055, SYM.RAID], [0.060, SYM.SHIELD], [0.055, SYM.ENERGY], [0.035, SYM.BAG], [0.065, SYM.COIN], [0.015, SYM.GEM], [0.006, SYM.CAPI], [0.03, SYM.TICKET]];
 function rollOutcome() {
   let x = rand();
   for (const [p, s] of TRIPLES) { x -= p; if (x < 0) return { reels: [s, s, s], near: false }; }
@@ -183,6 +238,11 @@ class Game {
     const row = this.q.user.get(id);
     if (!row) return null;
     const st = JSON.parse(row.state);
+    if (!st.recentTargets) st.recentTargets = [];
+    if (st.tickets === undefined) st.tickets = 1;
+    if (typeof st.ticketProg !== 'number') st.ticketProg = (st.stats && st.stats.spins ? st.stats.spins % TICKET_EVERY_SPINS : 0);
+    if (!st.timed) st.timed = { day: -1, idx: 0, nextAt: 0 };
+    if (!st.lastRaidCheck) st.lastRaidCheck = Date.now();
     return { row, st };
   }
 
@@ -201,7 +261,7 @@ class Game {
     const have = this.q.botCount.get().n;
     for (let i = have; i < n; i++) {
       const st = newState(now);
-      st.village = 1 + randInt(7);
+      st.village = 1 + randInt(15);
       st.levels = st.levels.map(() => 1 + randInt(MAX_LEVEL));
       st.coins = roundNice(rnd(20000, 400000) * rewardMult(st.village));
       st.shields = randInt(3);
@@ -231,6 +291,8 @@ class Game {
     regen(st, now);
     ensureMissions(st, u.row.id, now);
     if (st.activePet && st.petAwakeUntil <= now) { /* pet sleeping, keep selection */ }
+    const incoming = this.incoming(u, now);
+    this.timedFix(st, now);
     const day = dayOf(now);
     let bonus = null;
     if (st.streak.lastDay !== day) {
@@ -240,7 +302,105 @@ class Game {
       const got = applyGive(st, reward, now);
       bonus = { day: ((st.streak.count - 1) % STREAK.length) + 1, streak: st.streak.count, reward: got, table: STREAK };
     }
+    u.incoming = incoming;
     return bonus;
+  }
+
+  /**
+   * While you're away (or between refreshes) other islands come for you: a bot attack knocks one of your
+   * buildings down a level (shields and the Tucano block it), a bot raid takes a slice of your coins.
+   */
+  incoming(u, now) {
+    const st = u.st;
+    if (u.row.is_bot) return [];
+    const last = st.lastRaidCheck || now;
+    st.lastRaidCheck = now;
+    if (st.stats.spins < 25 || villageComplete(st)) return [];
+    const hours = Math.min(12, (now - last) / 3600e3);
+    let n = 0;
+    for (let h = hours; h > 0; h -= 2) if (rand() < Math.min(1, h / 2) * 0.55) n++;
+    n = Math.min(3, n);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const bot = this.q.randomBots.all(1)[0];
+      if (!bot) break;
+      const actor = { id: bot.id, name: bot.name };
+      if (rand() < 0.65) {
+        const valid = [0, 1, 2, 3, 4].filter((k) => st.levels[k] > 0);
+        if (!valid.length) continue;
+        if (st.shields > 0) { st.shields--; this.addEvent(u.row.id, 'block', actor, { by: 'shield' }, now); out.push('block'); continue; }
+        if (petAwake(st, 'tucano', now) && rand() < petBlockChance(st.pets.tucano.level)) { petXp(st, 'tucano'); this.addEvent(u.row.id, 'block', actor, { by: 'pet' }, now); out.push('block'); continue; }
+        const k = pick(valid);
+        st.levels[k]--;
+        const destroyed = st.levels[k] === 0;
+        st.damaged[k] = !destroyed;
+        this.addEvent(u.row.id, 'attack', actor, { slot: k, building: themeOf(st.village)[1][k], level: st.levels[k], destroyed }, now);
+        out.push('attack');
+      } else {
+        const lost = Math.min(Math.floor(st.coins * 0.12), roundNice(30000 * rewardMult(st.village)));
+        if (lost <= 0) continue;
+        st.coins -= lost;
+        this.addEvent(u.row.id, 'raid', actor, { amount: lost }, now);
+        out.push('raid');
+      }
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- free prize ladder
+  timedFix(st, now) {
+    const day = dayOf(now);
+    if (st.timed.day !== day) st.timed = { day, idx: 0, nextAt: now + TIMED[0].min * 60e3 };
+  }
+  timedInfo(st, now) {
+    this.timedFix(st, now);
+    const t = TIMED[Math.min(st.timed.idx, TIMED.length - 1)];
+    const give = { ...t.give };
+    if (give.coinsVm) { give.coins = roundNice(give.coinsVm * rewardMult(st.village)); delete give.coinsVm; }
+    return { idx: st.timed.idx, readyMs: Math.max(0, st.timed.nextAt - now), reward: give, steps: TIMED.length };
+  }
+  timedClaim(u, now) {
+    const st = u.st;
+    this.timedFix(st, now);
+    if (now < st.timed.nextAt) throw err(409, 'not_ready', 'O prêmio ainda não está pronto.');
+    const t = TIMED[Math.min(st.timed.idx, TIMED.length - 1)];
+    const got = applyGive(st, t.give, now);
+    st.timed.idx++;
+    st.timed.nextAt = now + TIMED[Math.min(st.timed.idx, TIMED.length - 1)].min * 60e3;
+    this.save(u, now);
+    return { got, timed: this.timedInfo(st, now) };
+  }
+
+  // ---------------------------------------------------------------- minigames
+  miniStart(u, game, now) {
+    const st = u.st;
+    const def = MINI[game];
+    if (!def) throw err(400, 'bad_game', 'Minigame inválido.');
+    if ((st.tickets || 0) < 1) throw err(400, 'no_tickets', 'Você está sem fichas. Cada giro enche a barra de fichas e ainda pode dar uma ficha extra.');
+    st.tickets--;
+    st.mini = { game, at: now, seed: randInt(1e9) };
+    this.save(u, now);
+    return { game, seed: st.mini.seed, dur: def.dur, tickets: st.tickets };
+  }
+  miniFinish(u, score, now) {
+    const st = u.st;
+    const m = st.mini;
+    if (!m) throw err(409, 'no_game', 'Nenhum minigame em andamento.');
+    const def = MINI[m.game];
+    const elapsed = Math.max(0, (now - m.at) / 1000);
+    let sc = Math.max(0, Math.floor(Number(score) || 0));
+    sc = Math.min(sc, def.cap, Math.floor(elapsed * def.perSec) + 3);
+    const vm = rewardMult(st.village);
+    const give = { coins: roundNice(sc * def.coins * vm * (dailyEvent(now).id === 'festa' ? 2 : 1)) };
+    const spins = Math.floor(sc / def.spinEvery);
+    if (spins > 0) give.spins = spins;
+    if (sc >= def.cap * 0.75) give.gems = 3;
+    st.mini = null;
+    const got = applyGive(st, give, now);
+    if (got.coins > st.stats.bestWin) st.stats.bestWin = got.coins;
+    st.stats.minis = (st.stats.minis || 0) + 1;
+    this.save(u, now);
+    return { score: sc, got, tickets: st.tickets };
   }
 
   publicVillage(u, extra = {}) {
@@ -279,6 +439,11 @@ class Game {
       pending: { attack: st.pending.attack ? { bet: st.pending.attack.bet } : null, raid: st.pending.raid ? { bet: st.pending.raid.bet, started: !!st.pending.raid.spots } : null },
       stats: st.stats, starterAvailable: !st.starterBought,
       rewardMult: rewardMult(st.village),
+      tickets: st.tickets || 0, maxTickets: MAX_TICKETS, ticketEvery: TICKET_EVERY_SPINS, ticketProg: Math.min(TICKET_EVERY_SPINS, st.ticketProg || 0),
+      ticketsPerGoal: ticketsPerGoal(now), ticketChance: ticketChance(now), spinsToTicket: Math.max(0, TICKET_EVERY_SPINS - (st.ticketProg || 0)),
+      trail: trailInfo(st, now),
+      dailyEvent: { ...dailyEvent(now), endsMs: msToNextDay(now) },
+      timed: this.timedInfo(st, now), minigames: Object.fromEntries(Object.entries(MINI).map(([k, d]) => [k, { name: d.name, dur: d.dur }])),
       unread: counts.unread, giftsPending: counts.gifts, friendRequests: counts.requests, lastEventId: counts.lastEvent || 0,
     };
   }
@@ -288,22 +453,40 @@ class Game {
     const st = u.st;
     regen(st, now);
     ensureMissions(st, u.row.id, now);
-    if (st.pending.attack || st.pending.raid) throw err(409, 'pending_action', 'Termine o ataque/saque antes de girar.');
+    if (st.pending.attack || st.pending.raid) throw err(409, 'pending_action', 'Conclua seu ataque ou saque antes de girar de novo.');
     bet = BETS.includes(bet) ? bet : 1;
-    if (st.spins < 1) throw err(400, 'no_spins', 'Sem giros!');
+    if (st.spins < 1) throw err(400, 'no_spins', 'Você está sem giros. Novos giros chegam a cada 3 minutos.');
     while (bet > st.spins) bet = BETS[Math.max(0, BETS.indexOf(bet) - 1)];
     st.bet = bet;
     st.spins -= bet;
     st.stats.spins++;
     missionProgress(st, 'spin', 1);
+    const ev = dailyEvent(now);
+    // ticket bar: counts every spin used (bet included); pays when it fills. If tickets are full the bar waits, nothing is lost.
+    let ticketGoal = 0, ticketDrop = 0;
+    if (typeof st.ticketProg !== 'number') st.ticketProg = 0;
+    st.ticketProg = Math.min(TICKET_EVERY_SPINS * 2, st.ticketProg + bet);
+    while (st.ticketProg >= TICKET_EVERY_SPINS && (st.tickets || 0) < MAX_TICKETS) {
+      const n = Math.min(ticketsPerGoal(now), MAX_TICKETS - (st.tickets || 0));
+      st.tickets = (st.tickets || 0) + n; ticketGoal += n; st.ticketProg -= TICKET_EVERY_SPINS;
+    }
+    if ((st.tickets || 0) < MAX_TICKETS && rand() < ticketChance(now)) { st.tickets++; ticketDrop = 1; }
     const { reels, near } = rollOutcome();
     const vm = rewardMult(st.village);
     const res = { reels, near, bet, triple: reels[0] === reels[1] && reels[1] === reels[2], sym: reels[0], coins: 0, spins: 0, gems: 0, shield: 0, action: null };
     if (res.triple) {
       missionProgress(st, 'bigwin', 1);
       switch (reels[0]) {
-        case SYM.COIN: res.coins = Math.floor(2500 * bet * vm); break;
-        case SYM.BAG: res.coins = Math.floor(10000 * bet * vm); break;
+        case SYM.COIN: res.coins = Math.floor(2500 * bet * vm * (ev.id === 'moedas' ? 2 : 1)); break;
+        case SYM.BAG: res.coins = Math.floor(10000 * bet * vm * (ev.id === 'moedas' ? 2 : 1)); break;
+        case SYM.TICKET: {
+          const want = ev.id === 'ficha' ? 5 : 3;
+          const room = Math.max(0, MAX_TICKETS - (st.tickets || 0));
+          const n = Math.min(want, room);
+          st.tickets = (st.tickets || 0) + n; res.tickets = n;
+          if (n < want) res.coins = Math.floor(2000 * (want - n) * bet * vm);
+          break;
+        }
         case SYM.CAPI: res.coins = Math.floor(50000 * bet * vm); res.gems = 5; break;
         case SYM.ENERGY: res.spins = 15 * bet; break;
         case SYM.GEM: res.gems = Math.min(100, 5 * bet); break;
@@ -321,6 +504,10 @@ class Game {
     st.coins += res.coins; st.spins += res.spins; st.gems += res.gems;
     if (res.coins > st.stats.bestWin) st.stats.bestWin = res.coins;
     res.vm = vm;
+    res.ticket = ticketDrop;
+    res.ticketGoal = ticketGoal;
+    res.ticketsNow = st.tickets || 0;
+    res.trail = trailAdd(st, bet + (res.triple && (res.action === 'attack' || res.action === 'raid') ? 5 * bet : 0), now);
     this.save(u, now);
     return res;
   }
@@ -329,13 +516,14 @@ class Game {
   build(u, slot, now) {
     const st = u.st;
     if (!(slot >= 0 && slot < 5)) throw err(400, 'bad_slot', 'Prédio inválido.');
-    if (villageComplete(st)) throw err(409, 'complete', 'Vila completa! Vá para a próxima.');
+    if (villageComplete(st)) throw err(409, 'complete', 'Vila completa! Viaje para a próxima ilha.');
     const dmg = st.damaged[slot];
     if (!dmg && st.levels[slot] >= MAX_LEVEL) throw err(409, 'max', 'Este prédio já está no máximo.');
+    if (dmg && st.levels[slot] >= MAX_LEVEL) { st.damaged[slot] = false; this.save(u, now); return { slot, level: st.levels[slot], repaired: true, cost: 0, complete: villageComplete(st) }; }
     const cost = dmg ? repairCost(st, slot) : buildCost(st, slot);
     if (st.coins < cost) throw err(400, 'no_coins', 'Moedas insuficientes.');
     st.coins -= cost;
-    if (dmg) st.damaged[slot] = false; else { st.levels[slot]++; st.stats.builds++; missionProgress(st, 'build', 1); }
+    if (dmg) { st.damaged[slot] = false; st.levels[slot] = Math.min(MAX_LEVEL, st.levels[slot] + 1); } else { st.levels[slot]++; st.stats.builds++; missionProgress(st, 'build', 1); }
     this.save(u, now);
     return { slot, level: st.levels[slot], repaired: dmg, cost, complete: villageComplete(st) };
   }
@@ -383,8 +571,12 @@ class Game {
     let target = null;
     if (wantId) target = opts.find((o) => o.id === wantId) || null;
     if (!target) {
-      const nonBot = opts.filter((o) => !o.bot && !o.revenge);
-      target = nonBot.length && rand() < 0.7 ? pick(nonBot) : (opts.find((o) => o.bot) || opts[0]);
+      // a different rival every attack: skip the last ones, prefer real players that still have something to break
+      const recent = new Set(st.recentTargets || []);
+      const fresh = opts.filter((o) => !recent.has(o.id) && o.levels.some((l) => l > 0));
+      const pool = fresh.length ? fresh : opts.filter((o) => !recent.has(o.id));
+      const real = pool.filter((o) => !o.bot && !o.revenge);
+      target = real.length && rand() < 0.75 ? pick(real) : (pool.find((o) => o.bot) || pool[0] || opts[0]);
     }
     if (!target) throw err(500, 'no_targets', 'Nenhum alvo disponível.');
     st.pending.attack.allowed = opts.map((o) => o.id);
@@ -404,15 +596,23 @@ class Game {
       const ts = t.st;
       regen(ts, now);
       const vm = rewardMult(st.village);
-      let reward = 6000 * p.bet * vm * rnd(0.85, 1.3);
+      let reward = 6000 * p.bet * vm * rnd(0.85, 1.3) * (dailyEvent(now).id === 'martelo' ? 2 : 1);
       let blocked = null;
       if (ts.shields > 0) { ts.shields--; blocked = 'shield'; }
       else if (petAwake(ts, 'tucano', now) && rand() < petBlockChance(ts.pets.tucano.level)) { blocked = 'pet'; petXp(ts, 'tucano'); }
-      let hitSlot = slot;
+      let hitSlot = slot, levelBefore = 0, levelAfter = 0, destroyed = false;
       if (!blocked) {
-        const valid = [0, 1, 2, 3, 4].filter((i) => ts.levels[i] > 0 && !ts.damaged[i]);
+        // every hit knocks the building down one level; a level-1 (precarious) building is destroyed
+        const valid = [0, 1, 2, 3, 4].filter((i) => ts.levels[i] > 0);
         if (!valid.includes(hitSlot)) hitSlot = valid.length ? pick(valid) : -1;
-        if (hitSlot >= 0) ts.damaged[hitSlot] = true;
+        if (hitSlot >= 0) {
+          levelBefore = ts.levels[hitSlot];
+          ts.levels[hitSlot] = levelBefore - 1;
+          levelAfter = ts.levels[hitSlot];
+          destroyed = levelAfter === 0;
+          ts.damaged[hitSlot] = !destroyed;
+          if (destroyed) reward *= 1.25;
+        }
       } else { reward *= 0.35; ts.stats.blocks = (ts.stats.blocks || 0) + 1; }
       let petBonus = 0;
       if (petAwake(st, 'onca', now)) { petBonus = Math.floor(reward * petAttackBonus(st.pets.onca.level)); petXp(st, 'onca'); }
@@ -421,15 +621,16 @@ class Game {
       st.stats.attacks++;
       missionProgress(st, 'attack', 1);
       st.pending.attack = null;
+      st.recentTargets = [targetId, ...(st.recentTargets || []).filter((x) => x !== targetId)].slice(0, 6);
       if (total > st.stats.bestWin) st.stats.bestWin = total;
       const tName = themeOf(ts.village)[1][hitSlot] || null;
       if (!t.row.is_bot) {
         if (blocked) this.addEvent(t.row.id, 'block', u.row, { by: blocked }, now);
-        else this.addEvent(t.row.id, 'attack', u.row, { slot: hitSlot, building: tName }, now);
+        else this.addEvent(t.row.id, 'attack', u.row, { slot: hitSlot, building: tName, level: levelAfter, destroyed }, now);
       }
       this.save(t, now, false);
       this.save(u, now);
-      return { blocked, slot: hitSlot, building: tName, reward: total, petBonus, target: this.publicVillage(t) };
+      return { blocked, slot: hitSlot, building: tName, levelBefore, levelAfter, destroyed, reward: total, petBonus, target: this.publicVillage(t) };
     });
   }
 
@@ -443,9 +644,11 @@ class Game {
       return { target: t ? this.publicVillage(t) : null, digs: p.digs, dug: p.dug.map((i) => ({ spot: i, value: p.spots[i], kind: p.kinds[i] })), bet: p.bet };
     }
     const c = this.candidates(u, now, 8);
-    const pool = [...c.real, ...c.bots, ...c.friends].filter((x) => x.row.id !== u.row.id);
+    const recent = new Set(st.recentTargets || []);
+    let pool = [...c.real, ...c.bots, ...c.friends].filter((x) => x.row.id !== u.row.id);
+    if (pool.some((x) => !recent.has(x.row.id))) pool = pool.filter((x) => !recent.has(x.row.id));
     pool.sort((a, b) => b.st.coins - a.st.coins);
-    const t = pool[0];
+    const t = rand() < 0.6 ? pool[0] : pick(pool.slice(0, 4));
     if (!t) throw err(500, 'no_targets', 'Nenhum alvo disponível.');
     const vm = rewardMult(st.village);
     const pot = 20000 * p.bet * vm * rnd(0.8, 1.4);
@@ -455,6 +658,7 @@ class Game {
     p.spots = new Array(9); p.kinds = new Array(9);
     idx.forEach((spot, j) => { p.spots[spot] = roundNice(pot * shares[j]); p.kinds[spot] = kinds[j]; });
     p.targetId = t.row.id; p.dug = [];
+    st.recentTargets = [t.row.id, ...(st.recentTargets || []).filter((x) => x !== t.row.id)].slice(0, 6);
     p.digs = 3 + (petAwake(st, 'quati', now) ? 1 : 0);
     p.petBonus = petAwake(st, 'quati', now) ? petRaidBonus(st.pets.quati.level) : 0;
     this.save(u, now);
@@ -468,12 +672,13 @@ class Game {
     if (!(spot >= 0 && spot < 9) || p.dug.includes(spot)) throw err(400, 'bad_spot', 'Lugar inválido.');
     p.dug.push(spot);
     const base = p.spots[spot];
-    const value = Math.floor(base * (1 + (p.petBonus || 0)));
+    const evk = dailyEvent(now).id === 'saque' ? 1.5 : 1;
+    const value = Math.floor(base * (1 + (p.petBonus || 0)) * evk);
     st.coins += value;
     const res = { spot, value, kind: p.kinds[spot], left: p.digs - p.dug.length, done: false };
     if (p.dug.length >= p.digs) {
       res.done = true;
-      const total = p.dug.reduce((a, i) => a + Math.floor(p.spots[i] * (1 + (p.petBonus || 0))), 0);
+      const total = p.dug.reduce((a, i) => a + Math.floor(p.spots[i] * (1 + (p.petBonus || 0)) * evk), 0);
       res.total = total;
       res.all = p.spots.map((v, i) => ({ spot: i, value: v, kind: p.kinds[i] }));
       st.stats.raids++;
@@ -507,7 +712,7 @@ class Game {
   }
   wheelSpin(u, now) {
     const st = u.st;
-    if (st.wheelDay === dayOf(now)) throw err(409, 'wheel_used', 'Volte amanhã!');
+    if (st.wheelDay === dayOf(now)) throw err(409, 'wheel_used', 'Você já girou a Roda da Sorte hoje. Ela volta amanhã.');
     let x = randInt(Game.WHEEL.reduce((a, s) => a + s.w, 0));
     let idx = 0;
     for (let i = 0; i < Game.WHEEL.length; i++) { x -= Game.WHEEL[i].w; if (x < 0) { idx = i; break; } }

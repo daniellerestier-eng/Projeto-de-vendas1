@@ -1,14 +1,14 @@
 'use strict';
 const http = require('node:http');
 const path = require('node:path');
-const { loadEnv, ApiError, err } = require('./util');
+const { loadEnv, ApiError, err } = require('./src/util');
 
 loadEnv(path.join(__dirname, '.env'));
 
-const db_ = require('./db');
-const { Game } = require('./game');
-const { Auth } = require('./auth');
-const { Payments } = require('./pay');
+const db_ = require('./src/db');
+const { Game } = require('./src/game');
+const { Auth } = require('./src/auth');
+const { Payments } = require('./src/pay');
 
 function config() {
   return {
@@ -65,7 +65,7 @@ function createServer(cfg = config()) {
   };
 
   // ---------------------------------------------------------------- public
-  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: 2, payments: pay.enabled(), google: auth.googleEnabled() }));
+  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: 4.2, payments: pay.enabled(), google: auth.googleEnabled() }));
 
   POST('/auth/guest', { rate: [20, 60e3] }, async (ctx) => auth.guest(ctx.body.deviceId, ctx.body.name, Date.now()));
   POST('/auth/register', { rate: [10, 60e3] }, async (ctx) => auth.register(ctx.body.email, ctx.body.password, ctx.body.name, ctx.userId, Date.now()));
@@ -99,7 +99,7 @@ function createServer(cfg = config()) {
   });
   POST('/api/profile/name', { auth: true }, withUser(async (u, ctx, now) => {
     const n = String(ctx.body.name || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 18);
-    if (n.length < 2) throw err(400, 'bad_name', 'Nome muito curto.');
+    if (n.length < 2) throw err(400, 'bad_name', 'O nome precisa ter pelo menos 2 letras.');
     u.row.name = n;
     if (Number.isInteger(ctx.body.avatar) && ctx.body.avatar >= 0 && ctx.body.avatar < 6) u.row.avatar = ctx.body.avatar;
     game.save(u, now);
@@ -118,6 +118,9 @@ function createServer(cfg = config()) {
   POST('/api/pets/feed', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.petFeed(u, String(ctx.body.pet), now) })));
   POST('/api/pets/select', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.petSelect(u, String(ctx.body.pet), now) })));
   POST('/api/pets/unlock', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.petUnlock(u, String(ctx.body.pet), now) })));
+  POST('/api/timed/claim', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.timedClaim(u, now) })));
+  POST('/api/minigame/start', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.miniStart(u, String(ctx.body.game), now) })));
+  POST('/api/minigame/finish', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.miniFinish(u, Number(ctx.body.score), now) })));
   POST('/api/missions/claim', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.missionClaim(u, ctx.body.id === 'all' ? 'all' : Number(ctx.body.id), now) })));
 
   GET('/api/friends', { auth: true }, withUser(async (u, ctx, now) => ({ friends: game.friends(u, now) })));
@@ -166,7 +169,7 @@ function createServer(cfg = config()) {
       let body = {};
       if (req.method === 'POST') {
         const chunks = []; let size = 0;
-        for await (const c of req) { size += c.length; if (size > 200_000) throw err(413, 'too_big', 'Requisição grande demais.'); chunks.push(c); }
+        for await (const c of req) { size += c.length; if (size > 200_000) throw err(413, 'too_big', 'Pedido muito grande.'); chunks.push(c); }
         const raw = Buffer.concat(chunks).toString('utf8');
         if (raw) { try { body = JSON.parse(raw); } catch (_) { body = Object.fromEntries(new URLSearchParams(raw)); } }
       }

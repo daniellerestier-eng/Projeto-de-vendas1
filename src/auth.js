@@ -94,7 +94,7 @@ class Auth {
   googleRedirectUri() { return this.cfg.publicUrl.replace(/\/$/, '') + '/auth/google/callback'; }
 
   googleStart(linkUserId) {
-    if (!this.googleEnabled()) throw err(501, 'google_disabled', 'Login com Google não configurado no servidor.');
+    if (!this.googleEnabled()) throw err(501, 'google_disabled', 'Login com Google indisponível no momento.');
     const state = token(16);
     const now = Date.now();
     for (const [k, v] of this.oauthStates) if (now - v.at > 15 * 60e3) this.oauthStates.delete(k);
