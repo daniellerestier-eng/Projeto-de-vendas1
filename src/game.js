@@ -45,7 +45,8 @@ const BOT_NAMES = ['Tatu Bandido', 'Onça Pintada', 'Macaco Pirata', 'Tucano Lad
 
 // ------------------------------------------------------------------ economy helpers
 const rewardMult = (v) => Math.pow(1.5, v - 1);
-const costMult = (v) => Math.pow(1.56, v - 1) * (1 + 0.04 * (v - 1));
+// first island is quick (hook), then each island takes a bit longer than the last (rewards grow 1.5x, costs ~1.6x+)
+const costMult = (v) => (v === 1 ? 0.75 : 1) * Math.pow(1.68, v - 1) * (1 + 0.06 * (v - 1));
 function buildCost(st, slot, level = st.levels[slot]) {
   return roundNice(2600 * (1 + level * 0.75) * (1 + slot * 0.14) * costMult(st.village));
 }
@@ -99,12 +100,12 @@ function unlockPetsByVillage(st) {
 // ------------------------------------------------------------------ missions + streak
 const MISSION_POOL = [
   { type: 'spin', label: 'Gire {n} vezes', targets: [30, 60, 100] },
-  { type: 'attack', label: 'Ataque {n} vila(s)', targets: [1, 2, 3] },
-  { type: 'raid', label: 'Faça {n} saque(s)', targets: [1, 2] },
-  { type: 'build', label: 'Construa ou melhore {n}x', targets: [2, 3, 5] },
+  { type: 'attack', label: 'Ataque {n} vila|Ataque {n} vilas', targets: [1, 2, 3] },
+  { type: 'raid', label: 'Faça {n} saque|Faça {n} saques', targets: [1, 2] },
+  { type: 'build', label: 'Construa ou melhore {n} prédio|Construa ou melhore {n} prédios', targets: [2, 3, 5] },
   { type: 'wheel', label: 'Gire a Roda da Sorte', targets: [1] },
-  { type: 'gift', label: 'Envie {n} presente(s) a amigos', targets: [1, 3] },
-  { type: 'bigwin', label: 'Consiga {n} trinca(s) na máquina', targets: [3, 5, 8] },
+  { type: 'gift', label: 'Envie {n} presente a um amigo|Envie {n} presentes a amigos', targets: [1, 3] },
+  { type: 'bigwin', label: 'Consiga {n} trinca na roleta|Consiga {n} trincas na roleta', targets: [3, 5, 8] },
 ];
 const MISSION_REWARDS = [{ spins: 15 }, { spins: 20 }, { spins: 25 }, { gems: 5 }, { gems: 8 }, { petiscos: 1 }];
 const ALL_MISSIONS_BONUS = { spins: 40, gems: 10 };
@@ -117,7 +118,8 @@ const TIMED = [
 const MAX_TICKETS = 15;
 const TICKET_EVERY_SPINS = 30;      // every 30 spins used (a x3 bet uses 3) fills the ticket bar...
 const TICKETS_PER_GOAL = 5;         // ...and pays 5 tickets
-const TICKET_DROP_CHANCE = 0.20;    // plus a 20% chance of +1 ticket on any spin
+const TICKET_DROP_CHANCE = 0.20;
+const BUILD_BONUS_CHANCE = 0.25;   // a quarter of the upgrades drop a surprise    // plus a 20% chance of +1 ticket on any spin
 // Daily party: one bonus per day, rotating (Brazil day). Gives players a reason to come back every day.
 const DAILY_EVENTS = [
   { id: 'martelo', name: 'Dia do Martelo', desc: 'Todo ataque rende o dobro de moedas hoje.' },
@@ -166,7 +168,8 @@ function ensureMissions(st, userId, now) {
     const m = pool.splice(Math.floor(r() * pool.length), 1)[0];
     const n = m.targets[Math.floor(r() * m.targets.length)];
     const reward = MISSION_REWARDS[Math.floor(r() * MISSION_REWARDS.length)];
-    list.push({ id: i, type: m.type, label: m.label.replace('{n}', n), target: n, progress: 0, claimed: false, reward });
+    const forms = m.label.split('|'); const lbl = (n === 1 || forms.length === 1 ? forms[0] : forms[1]).replace('{n}', n);
+    list.push({ id: i, type: m.type, label: lbl, target: n, progress: 0, claimed: false, reward });
   }
   st.missions = { day, list, bonusClaimed: false };
 }
@@ -241,6 +244,7 @@ class Game {
     const st = JSON.parse(row.state);
     if (!st.recentTargets) st.recentTargets = [];
     if (st.tickets === undefined) st.tickets = 1;
+    if (st.missions && st.missions.list) for (const m of st.missions.list) m.label = String(m.label).replace('vila(s)', m.target === 1 ? 'vila' : 'vilas').replace('saque(s)', m.target === 1 ? 'saque' : 'saques').replace('presente(s)', m.target === 1 ? 'presente' : 'presentes').replace('trinca(s) na máquina', m.target === 1 ? 'trinca na roleta' : 'trincas na roleta').replace(/melhore (\d+)x/, 'melhore $1 prédios');
     if (st.village > MAX_VILLAGE) { st.village = MAX_VILLAGE; st.levels = [5, 5, 5, 5, 5]; st.damaged = [false, false, false, false, false]; st.finished = true; }
     if (typeof st.ticketProg !== 'number') st.ticketProg = (st.stats && st.stats.spins ? st.stats.spins % TICKET_EVERY_SPINS : 0);
     if (!st.timed) st.timed = { day: -1, idx: 0, nextAt: 0 };
@@ -490,7 +494,7 @@ class Game {
           break;
         }
         case SYM.CAPI: res.coins = Math.floor(50000 * bet * vm); res.gems = 5; break;
-        case SYM.ENERGY: res.spins = 15 * bet; break;
+        case SYM.ENERGY: res.spins = 7 * bet; break; // spins must not pay for themselves (~0.4 back per spin)
         case SYM.GEM: res.gems = Math.min(100, 5 * bet); break;
         case SYM.SHIELD:
           if (st.shields < MAX_SHIELDS) { st.shields++; res.shield = 1; } else res.coins = Math.floor(3000 * bet * vm);
@@ -501,7 +505,7 @@ class Game {
     } else {
       const coins = reels.filter((s) => s === SYM.COIN).length, bags = reels.filter((s) => s === SYM.BAG).length;
       res.coins = Math.floor((coins * 150 + bags * 600) * bet * vm);
-      if (reels.filter((s) => s === SYM.ENERGY).length === 2) res.spins = 2 * bet;
+      if (reels.filter((s) => s === SYM.ENERGY).length === 2) res.spins = 1 * bet;
     }
     st.coins += res.coins; st.spins += res.spins; st.gems += res.gems;
     if (res.coins > st.stats.bestWin) st.stats.bestWin = res.coins;
@@ -526,8 +530,15 @@ class Game {
     if (st.coins < cost) throw err(400, 'no_coins', 'Moedas insuficientes.');
     st.coins -= cost;
     if (dmg) { st.damaged[slot] = false; st.levels[slot] = Math.min(MAX_LEVEL, st.levels[slot] + 1); } else { st.levels[slot]++; st.stats.builds++; missionProgress(st, 'build', 1); }
+    // surprise "obra" bonus: building sometimes pays something back (variable reward on the core loop)
+    let bonus = null;
+    if (!dmg && rand() < BUILD_BONUS_CHANCE) {
+      const k = rand();
+      const give = k < 0.45 ? { spins: 3 + randInt(6) } : k < 0.75 ? { tickets: 1 } : k < 0.93 ? { coinsVm: 1500 + randInt(3000) } : { gems: 3 };
+      bonus = applyGive(st, give, now);
+    }
     this.save(u, now);
-    return { slot, level: st.levels[slot], repaired: dmg, cost, complete: villageComplete(st) };
+    return { slot, level: st.levels[slot], repaired: dmg, cost, complete: villageComplete(st), bonus };
   }
 
   nextVillage(u, now) {
@@ -542,7 +553,7 @@ class Game {
       this.save(u, now);
       return { village: st.village, finished: true, reward: got, unlockedPets: [], themeName: themeOf(st.village)[0] };
     }
-    const reward = { spins: 30 + st.village * 5, gems: 10 };
+    const reward = { spins: 20 + st.village * 2, gems: 10 };
     st.village++;
     st.levels = [0, 0, 0, 0, 0]; st.damaged = [false, false, false, false, false];
     st.stats.villages++;

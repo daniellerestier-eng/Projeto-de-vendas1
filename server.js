@@ -46,6 +46,7 @@ function createServer(cfg = config()) {
   // simple per-IP rate limiter for auth/payment endpoints
   const buckets = new Map();
   function limited(ip, key, max, windowMs) {
+    if (cfg.noRateLimit) return false;
     const k = ip + '|' + key, now = Date.now();
     let b = buckets.get(k);
     if (!b || now - b.t > windowMs) { b = { t: now, n: 0 }; buckets.set(k, b); }
@@ -65,7 +66,7 @@ function createServer(cfg = config()) {
   };
 
   // ---------------------------------------------------------------- public
-  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: 4.3, payments: pay.enabled(), google: auth.googleEnabled() }));
+  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: 4.4, payments: pay.enabled(), google: auth.googleEnabled() }));
 
   POST('/auth/guest', { rate: [20, 60e3] }, async (ctx) => auth.guest(ctx.body.deviceId, ctx.body.name, Date.now()));
   POST('/auth/register', { rate: [10, 60e3] }, async (ctx) => auth.register(ctx.body.email, ctx.body.password, ctx.body.name, ctx.userId, Date.now()));
