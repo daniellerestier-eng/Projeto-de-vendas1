@@ -106,8 +106,9 @@ const MISSION_POOL = [
   { type: 'wheel', label: 'Gire a Roda da Sorte', targets: [1] },
   { type: 'gift', label: 'Envie {n} presente a um amigo|Envie {n} presentes a amigos', targets: [1, 3] },
   { type: 'bigwin', label: 'Consiga {n} trinca na roleta|Consiga {n} trincas na roleta', targets: [3, 5, 8] },
+  { type: 'mini', label: 'Jogue {n} minigame|Jogue {n} minigames', targets: [1, 2, 3] },
 ];
-const MISSION_REWARDS = [{ spins: 15 }, { spins: 20 }, { spins: 25 }, { gems: 5 }, { gems: 8 }, { petiscos: 1 }];
+const MISSION_REWARDS = [{ spins: 15 }, { spins: 20 }, { spins: 25 }, { gems: 5 }, { gems: 8 }, { petiscos: 1 }, { tickets: 2 }];
 const ALL_MISSIONS_BONUS = { spins: 40, gems: 10 };
 // free prize ladder: the first one 5 minutes after the day starts, each next one a bit later (resets daily)
 const TIMED = [
@@ -119,7 +120,53 @@ const MAX_TICKETS = 15;
 const TICKET_EVERY_SPINS = 30;      // every 30 spins used (a x3 bet uses 3) fills the ticket bar...
 const TICKETS_PER_GOAL = 5;         // ...and pays 5 tickets
 const TICKET_DROP_CHANCE = 0.20;
-const BUILD_BONUS_CHANCE = 0.25;   // a quarter of the upgrades drop a surprise    // plus a 20% chance of +1 ticket on any spin
+const BUILD_BONUS_CHANCE = 0.25;   // a quarter of the upgrades drop a surprise
+const GOLDEN_SPIN_CHANCE = 0.02;    // 1 in 50 spins is a golden spin: the whole prize x3
+const HOT_STREAK = 3;               // 3 winning spins in a row -> coins x1.5 while the streak lasts
+const WELCOME_BACK_HOURS = 12;      // away this long -> a "welcome back" gift
+// Achievements: unlocked automatically, each pays gems once.
+const ACHIEVEMENTS = [
+  { id: 'spin100', name: 'Girador', desc: 'Gire 100 vezes', stat: 'spins', n: 100, gems: 10 },
+  { id: 'spin1000', name: 'Mestre da Roleta', desc: 'Gire 1.000 vezes', stat: 'spins', n: 1000, gems: 40 },
+  { id: 'spin5000', name: 'Lenda da Roleta', desc: 'Gire 5.000 vezes', stat: 'spins', n: 5000, gems: 120 },
+  { id: 'atk10', name: 'Martelada', desc: 'Faça 10 ataques', stat: 'attacks', n: 10, gems: 15 },
+  { id: 'atk100', name: 'Demolidor', desc: 'Faça 100 ataques', stat: 'attacks', n: 100, gems: 60 },
+  { id: 'raid10', name: 'Cavador', desc: 'Faça 10 saques', stat: 'raids', n: 10, gems: 15 },
+  { id: 'raid100', name: 'Caçador de Tesouros', desc: 'Faça 100 saques', stat: 'raids', n: 100, gems: 60 },
+  { id: 'build50', name: 'Mestre de Obras', desc: 'Construa ou melhore 50 vezes', stat: 'builds', n: 50, gems: 20 },
+  { id: 'isl3', name: 'Turista', desc: 'Conclua 3 ilhas', stat: 'villages', n: 3, gems: 25 },
+  { id: 'isl8', name: 'Carioca da Gema', desc: 'Conclua 8 ilhas', stat: 'villages', n: 8, gems: 60 },
+  { id: 'isl15', name: 'Dona do Rio', desc: 'Conclua as 15 ilhas', stat: 'villages', n: 15, gems: 200 },
+  { id: 'def10', name: 'Fortaleza', desc: 'Bloqueie 10 ataques', stat: 'blocks', n: 10, gems: 30 },
+  { id: 'mini20', name: 'Craque dos Minigames', desc: 'Jogue 20 minigames', stat: 'minis', n: 20, gems: 25 },
+  { id: 'lvl10', name: 'Nível 10', desc: 'Chegue ao nível 10', stat: 'level', n: 10, gems: 30 },
+  { id: 'lvl30', name: 'Nível 30', desc: 'Chegue ao nível 30', stat: 'level', n: 30, gems: 100 },
+];
+function checkAchievements(st, now) {
+  if (!st.ach) st.ach = {};
+  const got = [];
+  for (const a of ACHIEVEMENTS) {
+    if (st.ach[a.id]) continue;
+    const v = a.stat === 'level' ? ((st.player && st.player.level) || 1) : ((st.stats && st.stats[a.stat]) || 0);
+    if (v >= a.n) { st.ach[a.id] = now; st.gems += a.gems; got.push({ id: a.id, name: a.name, gems: a.gems }); }
+  }
+  return got;
+}
+// Player level: XP from everything you do; every level pays, every 5th level pays big.
+const xpNeed = (lvl) => 40 + lvl * 30;
+const levelReward = (lvl) => (lvl % 5 === 0 ? { spins: 20 + lvl, gems: 15, tickets: 2 } : { spins: 5 + Math.floor(lvl / 3), gems: 2 });
+function addXp(st, n, now) {
+  if (!st.player) st.player = { level: 1, xp: 0 };
+  st.player.xp += Math.max(0, Math.floor(n));
+  let up = null;
+  while (st.player.level < 200 && st.player.xp >= xpNeed(st.player.level)) {
+    st.player.xp -= xpNeed(st.player.level); st.player.level++;
+    const got = applyGive(st, levelReward(st.player.level), now);
+    up = { level: st.player.level, reward: got };
+    st.player.lastUp = { level: st.player.level, reward: got, at: now };
+  }
+  return up;
+}    // plus a 20% chance of +1 ticket on any spin
 // Daily party: one bonus per day, rotating (Brazil day). Gives players a reason to come back every day.
 const DAILY_EVENTS = [
   { id: 'martelo', name: 'Dia do Martelo', desc: 'Todo ataque rende o dobro de moedas hoje.' },
@@ -253,6 +300,7 @@ class Game {
   }
 
   save(u, now = Date.now(), touchSeen = true) {
+    if (u.st && u.st.stats && !u.row.is_bot) { const got = checkAchievements(u.st, now); if (got.length) u.st.achNew = [...(u.st.achNew || []), ...got].slice(-5); }
     const { row, st } = u;
     if (touchSeen) this.q.save.run(JSON.stringify(st), Math.floor(st.coins), st.village, villageProgress(st), row.name, row.avatar, now, row.id);
     else this.q.saveNoSeen.run(JSON.stringify(st), Math.floor(st.coins), st.village, villageProgress(st), row.id);
@@ -294,6 +342,12 @@ class Game {
   /** Daily bookkeeping. Returns daily bonus object if granted now. */
   touch(u, now) {
     const st = u.st;
+    // welcome back: away for a while -> a gift waiting (shown once by the app)
+    if (st.lastActive && now - st.lastActive > WELCOME_BACK_HOURS * 3600e3 && (!st.welcome || now - st.welcome.at > 20 * 3600e3)) {
+      const away = Math.min(72, Math.floor((now - st.lastActive) / 3600e3));
+      st.welcome = { at: now, hours: away, reward: applyGive(st, { spins: 15 + Math.floor(away / 2), coinsVm: 4000 }, now) };
+    }
+    st.lastActive = now;
     regen(st, now);
     ensureMissions(st, u.row.id, now);
     if (st.activePet && st.petAwakeUntil <= now) { /* pet sleeping, keep selection */ }
@@ -402,11 +456,18 @@ class Game {
     if (spins > 0) give.spins = spins;
     if (sc >= def.cap * 0.75) give.gems = 3;
     st.mini = null;
+    if (!st.miniBest) st.miniBest = {};
+    const best0 = st.miniBest[m.game] || 0;
+    const newRecord = sc > best0 && sc > 0;
+    if (newRecord) { st.miniBest[m.game] = sc; if (best0 > 0) give.gems = (give.gems || 0) + 2; }
+    const stars = sc >= def.cap * 0.6 ? 3 : sc >= def.cap * 0.3 ? 2 : sc > 0 ? 1 : 0;
     const got = applyGive(st, give, now);
     if (got.coins > st.stats.bestWin) st.stats.bestWin = got.coins;
     st.stats.minis = (st.stats.minis || 0) + 1;
+    missionProgress(st, 'mini', 1);
+    addXp(st, 6 + stars * 2, now);
     this.save(u, now);
-    return { score: sc, got, tickets: st.tickets };
+    return { score: sc, got, tickets: st.tickets, best: Math.max(best0, sc), newRecord, stars };
   }
 
   publicVillage(u, extra = {}) {
@@ -448,6 +509,8 @@ class Game {
       tickets: st.tickets || 0, maxTickets: MAX_TICKETS, ticketEvery: TICKET_EVERY_SPINS, ticketProg: Math.min(TICKET_EVERY_SPINS, st.ticketProg || 0),
       ticketsPerGoal: ticketsPerGoal(now), ticketChance: ticketChance(now), spinsToTicket: Math.max(0, TICKET_EVERY_SPINS - (st.ticketProg || 0)),
       trail: trailInfo(st, now),
+      player: { level: (st.player && st.player.level) || 1, xp: (st.player && st.player.xp) || 0, xpNext: xpNeed((st.player && st.player.level) || 1), lastUp: (st.player && st.player.lastUp) || null, nextReward: levelReward(((st.player && st.player.level) || 1) + 1) },
+      winStreak: st.winStreak || 0, achievements: ACHIEVEMENTS.map((a) => ({ id: a.id, name: a.name, desc: a.desc, gems: a.gems, done: !!(st.ach && st.ach[a.id]) })), achNew: st.achNew || [], welcome: st.welcome || null, miniBest: st.miniBest || {},
       dailyEvent: { ...dailyEvent(now), endsMs: msToNextDay(now) },
       timed: this.timedInfo(st, now), minigames: Object.fromEntries(Object.entries(MINI).map(([k, d]) => [k, { name: d.name, dur: d.dur }])),
       unread: counts.unread, giftsPending: counts.gifts, friendRequests: counts.requests, lastEventId: counts.lastEvent || 0,
@@ -507,6 +570,11 @@ class Game {
       res.coins = Math.floor((coins * 150 + bags * 600) * bet * vm);
       if (reels.filter((s) => s === SYM.ENERGY).length === 2) res.spins = 1 * bet;
     }
+    // golden spin (rare): everything this spin paid is tripled
+    if (rand() < GOLDEN_SPIN_CHANCE && (res.coins > 0 || res.spins > 0)) { res.golden = true; res.coins *= 3; res.spins *= 3; res.gems *= 3; }
+    // hot streak: consecutive paying spins
+    if (res.coins > 0 || res.spins > 0 || res.triple) st.winStreak = (st.winStreak || 0) + 1; else st.winStreak = 0;
+    if (st.winStreak >= HOT_STREAK && res.coins > 0) { res.coins = Math.floor(res.coins * 1.5); res.hot = st.winStreak; }
     st.coins += res.coins; st.spins += res.spins; st.gems += res.gems;
     if (res.coins > st.stats.bestWin) st.stats.bestWin = res.coins;
     res.vm = vm;
@@ -514,6 +582,7 @@ class Game {
     res.ticketGoal = ticketGoal;
     res.ticketsNow = st.tickets || 0;
     res.trail = trailAdd(st, bet + (res.triple && (res.action === 'attack' || res.action === 'raid') ? 5 * bet : 0), now);
+    res.levelUp = addXp(st, bet + (res.triple ? 3 : 0), now);
     this.save(u, now);
     return res;
   }
@@ -530,6 +599,7 @@ class Game {
     if (st.coins < cost) throw err(400, 'no_coins', 'Moedas insuficientes.');
     st.coins -= cost;
     if (dmg) { st.damaged[slot] = false; st.levels[slot] = Math.min(MAX_LEVEL, st.levels[slot] + 1); } else { st.levels[slot]++; st.stats.builds++; missionProgress(st, 'build', 1); }
+    const levelUp = addXp(st, dmg ? 5 : 12 + st.levels[slot] * 4, now);
     // surprise "obra" bonus: building sometimes pays something back (variable reward on the core loop)
     let bonus = null;
     if (!dmg && rand() < BUILD_BONUS_CHANCE) {
@@ -538,7 +608,7 @@ class Game {
       bonus = applyGive(st, give, now);
     }
     this.save(u, now);
-    return { slot, level: st.levels[slot], repaired: dmg, cost, complete: villageComplete(st), bonus };
+    return { slot, level: st.levels[slot], repaired: dmg, cost, complete: villageComplete(st), bonus, levelUp };
   }
 
   nextVillage(u, now) {
@@ -619,6 +689,9 @@ class Game {
       regen(ts, now);
       const vm = rewardMult(st.village);
       let reward = 6000 * p.bet * vm * rnd(0.85, 1.3) * (dailyEvent(now).id === 'martelo' ? 2 : 1);
+      // revenge: hitting someone who attacked you in the last 48 h pays 50% more
+      const revenge = this.q.recentAttackers.all(u.row.id, now - 48 * 3600e3).some((r) => r.actor_id === t.row.id);
+      if (revenge) reward *= 1.5;
       let blocked = null;
       if (ts.shields > 0) { ts.shields--; blocked = 'shield'; }
       else if (petAwake(ts, 'tucano', now) && rand() < petBlockChance(ts.pets.tucano.level)) { blocked = 'pet'; petXp(ts, 'tucano'); }
@@ -640,6 +713,7 @@ class Game {
       if (petAwake(st, 'onca', now)) { petBonus = Math.floor(reward * petAttackBonus(st.pets.onca.level)); petXp(st, 'onca'); }
       const total = Math.floor(reward) + petBonus;
       st.coins += total;
+      addXp(st, 8, now);
       st.stats.attacks++;
       missionProgress(st, 'attack', 1);
       st.pending.attack = null;
@@ -652,7 +726,7 @@ class Game {
       }
       this.save(t, now, false);
       this.save(u, now);
-      return { blocked, slot: hitSlot, building: tName, levelBefore, levelAfter, destroyed, reward: total, petBonus, target: this.publicVillage(t) };
+      return { blocked, slot: hitSlot, building: tName, levelBefore, levelAfter, destroyed, reward: total, petBonus, revenge, target: this.publicVillage(t) };
     });
   }
 
@@ -703,6 +777,7 @@ class Game {
       const total = p.dug.reduce((a, i) => a + Math.floor(p.spots[i] * (1 + (p.petBonus || 0)) * evk), 0);
       res.total = total;
       res.all = p.spots.map((v, i) => ({ spot: i, value: v, kind: p.kinds[i] }));
+      addXp(st, 8, now);
       st.stats.raids++;
       missionProgress(st, 'raid', 1);
       if (p.petBonus) petXp(st, 'quati');
@@ -771,6 +846,7 @@ class Game {
     { id: 'g_petisco', title: '1 petisco', gems: 30, give: { petiscos: 1 }, icon: 'petisco' },
     { id: 'g_petisco5', title: '5 petiscos', gems: 120, give: { petiscos: 5 }, icon: 'petisco' },
     { id: 'g_shield', title: '1 escudo', gems: 20, give: { shields: 1 }, icon: 'shield' },
+    { id: 'g_tickets5', title: '5 fichas', gems: 35, give: { tickets: 5 }, icon: 'tickets', tag: 'Novo' },
     { id: 'g_chest', title: 'Baú Mágico', gems: 150, give: { spins: 140, shields: 3, petiscos: 3 }, icon: 'chest' },
   ];
   gemShop(st) {
@@ -782,6 +858,7 @@ class Game {
     if (!it) throw err(400, 'bad_item', 'Item inválido.');
     if (st.gems < it.gems) throw err(400, 'no_gems', 'Gemas insuficientes.');
     if (it.give.shields && st.shields >= MAX_SHIELDS && Object.keys(it.give).length === 1) throw err(409, 'shields_full', 'Seus escudos já estão cheios.');
+    if (it.give.tickets && (st.tickets || 0) + it.give.tickets > MAX_TICKETS) throw err(409, 'tickets_full', 'Você tem fichas demais. Jogue um minigame antes de comprar mais.');
     st.gems -= it.gems;
     const got = applyGive(st, it.give, now);
     this.save(u, now);

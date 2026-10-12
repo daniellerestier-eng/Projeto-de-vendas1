@@ -66,7 +66,7 @@ function createServer(cfg = config()) {
   };
 
   // ---------------------------------------------------------------- public
-  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: 4.4, payments: pay.enabled(), google: auth.googleEnabled() }));
+  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: '4.5', payments: pay.enabled(), google: auth.googleEnabled() }));
 
   POST('/auth/guest', { rate: [20, 60e3] }, async (ctx) => auth.guest(ctx.body.deviceId, ctx.body.name, Date.now()));
   POST('/auth/register', { rate: [10, 60e3] }, async (ctx) => auth.register(ctx.body.email, ctx.body.password, ctx.body.name, ctx.userId, Date.now()));
