@@ -66,7 +66,7 @@ function createServer(cfg = config()) {
   };
 
   // ---------------------------------------------------------------- public
-  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: '4.5', payments: pay.enabled(), google: auth.googleEnabled() }));
+  GET('/health', {}, async () => ({ ok: true, name: 'Capi Coin', version: '5.0', payments: pay.enabled(), google: auth.googleEnabled() }));
 
   POST('/auth/guest', { rate: [20, 60e3] }, async (ctx) => auth.guest(ctx.body.deviceId, ctx.body.name, Date.now()));
   POST('/auth/register', { rate: [10, 60e3] }, async (ctx) => auth.register(ctx.body.email, ctx.body.password, ctx.body.name, ctx.userId, Date.now()));
@@ -123,6 +123,15 @@ function createServer(cfg = config()) {
   POST('/api/timed/claim', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.timedClaim(u, now) })));
   POST('/api/minigame/start', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.miniStart(u, String(ctx.body.game), now) })));
   POST('/api/minigame/finish', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.miniFinish(u, Number(ctx.body.score), now) })));
+  POST('/api/raid/extra', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.raidExtra(u, Number(ctx.body.spot), now) })));
+  POST('/api/outfit/buy', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.outfitBuy(u, String(ctx.body.id), now) })));
+  POST('/api/outfit/equip', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.outfitEquip(u, String(ctx.body.id), now) })));
+  GET('/api/album', { auth: true }, withUser(async (u) => ({ album: game.albumInfo(u.st) })));
+  POST('/api/album/swap', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.albumSwap(u, now) })));
+  GET('/api/pass', { auth: true }, withUser(async (u, ctx, now) => ({ pass: game.passInfo(u.st, now) })));
+  POST('/api/pass/claim', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.passClaim(u, Number(ctx.body.tier), ctx.body.track === 'premium' ? 'premium' : ctx.body.track === 'all' ? 'all' : 'free', now) })));
+  GET('/api/pwheel', { auth: true }, withUser(async (u) => ({ segments: game.pwheelInfo(u.st) })));
+  POST('/api/pwheel/spin', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.pwheelSpin(u, now) })));
   POST('/api/missions/claim', { auth: true }, withUser(async (u, ctx, now) => ({ result: game.missionClaim(u, ctx.body.id === 'all' ? 'all' : Number(ctx.body.id), now) })));
 
   GET('/api/friends', { auth: true }, withUser(async (u, ctx, now) => ({ friends: game.friends(u, now) })));

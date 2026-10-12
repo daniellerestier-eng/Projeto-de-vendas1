@@ -124,6 +124,9 @@ const BUILD_BONUS_CHANCE = 0.25;   // a quarter of the upgrades drop a surprise
 const GOLDEN_SPIN_CHANCE = 0.02;    // 1 in 50 spins is a golden spin: the whole prize x3
 const HOT_STREAK = 3;               // 3 winning spins in a row -> coins x1.5 while the streak lasts
 const WELCOME_BACK_HOURS = 12;      // away this long -> a "welcome back" gift
+const CRIT_CHANCE = 0.12;           // critical hammer hit: x2 coins
+const RAID_EXTRA_GEMS = 10;         // golden shovel: one more dig after the raid, for gems
+const RAID_GOLD_CHEST = 0.30;       // chance the second chest of a raid is a golden one
 // Achievements: unlocked automatically, each pays gems once.
 const ACHIEVEMENTS = [
   { id: 'spin100', name: 'Girador', desc: 'Gire 100 vezes', stat: 'spins', n: 100, gems: 10 },
@@ -152,6 +155,136 @@ function checkAchievements(st, now) {
   }
   return got;
 }
+// ------------------------------------------------------------------ Capi outfits (cosmetic + a small perk)
+const OUTFITS = [
+  { id: 'classica', idx: 0, name: 'Clássica', desc: 'Laranja na cabeça e bandana vermelha', perk: {}, perkText: 'O visual de sempre' },
+  { id: 'praia', idx: 1, name: 'Praiana', desc: 'Óculos escuros e canga turquesa', gems: 150, perk: { raid: 0.10 }, perkText: '+10% moedas nos saques' },
+  { id: 'craque', idx: 2, name: 'Craque', desc: 'Boné verde e amarelo de torcedora', gems: 250, perk: { attack: 0.10 }, perkText: '+10% moedas nos ataques' },
+  { id: 'malandro', idx: 3, name: 'Malandra', desc: 'Chapéu panamá e lenço listrado', gems: 400, perk: { slot: 0.08 }, perkText: '+8% moedas na roleta' },
+  { id: 'folia', idx: 4, name: 'Folia', desc: 'Cocar de plumas do Carnaval', pix: 'outfit_folia', pass: true, perk: { tickets: 1 }, perkText: '+1 ficha a cada barra cheia' },
+  { id: 'rainha', idx: 5, name: 'Rainha da Bateria', desc: 'Coroa e colar de ouro', pix: 'outfit_rainha', perk: { all: 0.10 }, perkText: '+10% moedas em tudo' },
+];
+const OUTFIT_DUP_GEMS = 400;
+function outfitFix(st) { if (!st.outfit || !Array.isArray(st.outfit.owned)) st.outfit = { on: 'classica', owned: ['classica'] }; return st.outfit; }
+function outfitBonus(st, kind) {
+  const o = OUTFITS.find((x) => x.id === outfitFix(st).on);
+  if (!o) return 0;
+  return (o.perk[kind] || 0) + (kind !== 'tickets' ? (o.perk.all || 0) : 0);
+}
+
+// ------------------------------------------------------------------ Álbum de Figurinhas do Rio (10 albums x 9 stickers)
+const B = (th, sl) => ({ name: THEMES[th][1][sl], sprite: `bld_${th}_${sl}_5` });
+const ALBUMS = [
+  { name: 'Morro e Lapa', st: [B(0, 0), B(0, 1), B(0, 2), B(0, 3), B(0, 4), B(5, 0), B(5, 2), B(5, 4), B(5, 1)] },
+  { name: 'Copacabana e Ipanema', st: [B(1, 0), B(2, 0), B(1, 1), B(2, 1), B(1, 2), B(2, 3), B(1, 3), B(1, 4), B(2, 4)] },
+  { name: 'Pão de Açúcar e Corcovado', st: [B(3, 0), B(4, 1), B(3, 2), B(4, 2), B(3, 3), B(4, 3), B(3, 1), B(3, 4), B(4, 4)] },
+  { name: 'Santa Teresa e Maracanã', st: [B(6, 0), B(7, 0), B(6, 2), B(7, 1), B(6, 3), B(7, 3), B(6, 1), B(6, 4), B(7, 4)] },
+  { name: 'Sambódromo e Jardim Botânico', st: [B(8, 0), B(9, 0), B(8, 1), B(9, 1), B(8, 3), B(9, 3), B(8, 2), B(9, 4), B(8, 4)] },
+  { name: 'Tijuca e São Conrado', st: [B(10, 0), B(11, 1), B(10, 1), B(11, 2), B(10, 2), B(11, 3), B(10, 3), B(10, 4), B(11, 4)] },
+  { name: 'Barra e Paquetá', st: [B(12, 1), B(13, 0), B(12, 2), B(13, 2), B(12, 3), B(13, 3), B(13, 1), B(13, 4), B(12, 4)] },
+  { name: 'Centro e Rio Raiz', st: [B(14, 0), B(2, 2), B(14, 1), B(5, 3), B(14, 3), B(7, 2), B(14, 2), B(4, 0), B(14, 4)] },
+  { name: 'Transportes do Rio', st: [{ name: 'Pipa', sprite: 'amb_kite' }, { name: 'Veleiro', sprite: 'amb_sailboat' }, { name: 'Windsurf', sprite: 'amb_windsurf' }, { name: 'Avião', sprite: 'amb_plane' },
+    { name: 'Barca Rio-Niterói', sprite: 'amb_ferry' }, { name: 'Asa-Delta', sprite: 'amb_glider' }, { name: 'Bonde de Santa Teresa', sprite: 'amb_bonde' }, { name: 'Helicóptero', sprite: 'amb_heli' }, { name: 'Bondinho', sprite: 'amb_cablecar' }] },
+  { name: 'Turma da Capi', st: [{ name: 'Capi Surpresa', sprite: 'capi_wow' }, { name: 'Quati Fuçador', sprite: 'pet_quati' }, { name: 'Barão Ganancioso', sprite: 'barao_smirk' }, { name: 'Onça Guerreira', sprite: 'pet_onca' },
+    { name: 'Tucano Guardião', sprite: 'pet_tucano' }, { name: 'Barão Furioso', sprite: 'barao_angry' }, { name: 'Barco da Capi', sprite: 'boat_capi' }, { name: 'Capi Risonha', sprite: 'capi_laugh' }, { name: 'Capi Campeã', sprite: 'capi_cheer' }] },
+];
+const RARITY_BY_POS = [1, 1, 2, 2, 3, 3, 4, 4, 5]; // the 9th sticker of every album is a golden one (5 stars)
+const STICKERS = [];
+ALBUMS.forEach((a, ai) => { a.reward = { spins: 60 + ai * 25, gems: 20 + ai * 5 }; a.st.forEach((s, k) => STICKERS.push({ i: STICKERS.length, album: ai, name: s.name, sprite: s.sprite, rarity: Math.min(5, RARITY_BY_POS[k] + (ai === 9 && k < 8 && k % 2 === 1 ? 1 : 0)) })); });
+const ALBUM_GRAND = { spins: 2000, gems: 500, pwheel: 3 };
+const RARITY_W = [0, 40, 28, 17, 10, 5];
+const STK_CHESTS = {
+  wood: { name: 'Baú de Figurinhas', n: 2, min: 1 },
+  gold: { name: 'Baú Dourado de Figurinhas', n: 4, min: 3 },
+  magic: { name: 'Baú do Carnaval', n: 7, min: 4 },
+  golden: { name: 'Figurinha Dourada', n: 1, min: 5 },
+};
+const STAR_SWAP = 40; // duplicates turn into stars; 50 stars buy one sticker you are missing
+function albumFix(st) {
+  if (!st.album || !Array.isArray(st.album.c) || st.album.c.length !== STICKERS.length) {
+    const old = st.album && Array.isArray(st.album.c) ? st.album.c : [];
+    st.album = { c: STICKERS.map((_, i) => old[i] || 0), stars: (st.album && st.album.stars) || 0, done: (st.album && st.album.done) || [], grand: !!(st.album && st.album.grand), seen: (st.album && st.album.seen) || 0 };
+  }
+  return st.album;
+}
+function drawRarity(min) {
+  let tot = 0; for (let r = min; r <= 5; r++) tot += RARITY_W[r];
+  let x = rand() * tot;
+  for (let r = min; r <= 5; r++) { x -= RARITY_W[r]; if (x < 0) return r; }
+  return 5;
+}
+function grantSticker(st, idx, now, out) {
+  const al = albumFix(st);
+  const s = STICKERS[idx];
+  const isNew = al.c[idx] === 0;
+  al.c[idx]++;
+  if (!isNew) al.stars += s.rarity;
+  out.stickers.push({ i: idx, album: s.album, name: s.name, sprite: s.sprite, rarity: s.rarity, new: isNew });
+  if (isNew) {
+    for (let ai = 0; ai < ALBUMS.length; ai++) {
+      if (!al.done.includes(ai) && STICKERS.every((x) => x.album !== ai || al.c[x.i] > 0)) {
+        al.done.push(ai);
+        out.albums.push({ album: ai, name: ALBUMS[ai].name, reward: applyGive(st, ALBUMS[ai].reward, now) });
+      }
+    }
+    if (!al.grand && al.done.length >= ALBUMS.length) { al.grand = true; out.grand = applyGive(st, ALBUM_GRAND, now); }
+  }
+}
+/** Opens a sticker chest: random stickers (at least one of `min` stars), duplicates become stars. */
+function openStickerChest(st, kind, now) {
+  const def = STK_CHESTS[kind] || STK_CHESTS.wood;
+  const out = { kind, name: def.name, stickers: [], albums: [], grand: null };
+  for (let k = 0; k < def.n; k++) {
+    const rar = k === 0 ? Math.max(def.min, drawRarity(1)) : drawRarity(1);
+    const pool = STICKERS.filter((s) => s.rarity === rar);
+    // big chests lean toward stickers you don't have yet (feels generous, keeps the album moving)
+    const al = albumFix(st);
+    const fresh = pool.filter((s) => al.c[s.i] === 0);
+    const usePool = fresh.length && rand() < (kind === 'magic' ? 0.75 : 0.5) ? fresh : pool;
+    grantSticker(st, pick(usePool).i, now, out);
+  }
+  st.stats.stickers = (st.stats.stickers || 0) + def.n;
+  return out;
+}
+
+// ------------------------------------------------------------------ Passe do Carnaval (28-day seasons, 40 tiers, free + premium)
+const PASS_DAYS = 28;
+const PASS_TIERS = 40;
+const PASS_TIER_PTS = 400;
+const PASS_PTS = { attack: 15, raid: 15, mini: 20, mission: 40, build: 8 };
+function passReward(tier, premium) {
+  if (!premium) {
+    if (tier === PASS_TIERS) return { spins: 120, gems: 40, stk: 'gold' };
+    if (tier % 10 === 0) return { spins: 50, gems: 15, stk: 'gold' };
+    if (tier % 5 === 0) return { stk: 'wood', tickets: 3 };
+    return [{ spins: 10 }, { coinsVm: 6000 }, { tickets: 2 }, { spins: 15 }][tier % 4];
+  }
+  if (tier === PASS_TIERS) return { outfit: 'folia', spins: 400, gems: 150 };
+  if (tier % 10 === 0) return { pwheel: 1, stk: 'magic' };
+  if (tier % 5 === 0) return { stk: 'gold', gems: 25 };
+  return [{ spins: 30 }, { gems: 12 }, { coinsVm: 25000 }, { stk: 'wood', spins: 20 }][tier % 4];
+}
+const passSeason = (now) => Math.floor(dayOf(now) / PASS_DAYS);
+const PASS_EPOCH = passSeason(Date.UTC(2026, 9, 1, 12)); // season 1 = the one running when the Carnival Pass launched
+function passFix(st, now) {
+  const s = passSeason(now);
+  if (!st.pass || st.pass.season !== s) st.pass = { season: s, pts: 0, free: [], prem: [], premium: false };
+  return st.pass;
+}
+function passAdd(st, n, now) { const p = passFix(st, now); p.pts = Math.min(PASS_TIERS * PASS_TIER_PTS, p.pts + Math.max(0, Math.floor(n))); }
+function passTier(p) { return Math.min(PASS_TIERS, Math.floor(p.pts / PASS_TIER_PTS)); }
+function passClaimable(p) {
+  const t = passTier(p); let n = 0;
+  for (let k = 1; k <= t; k++) { if (!p.free.includes(k)) n++; if (p.premium && !p.prem.includes(k)) n++; }
+  return n;
+}
+function passSummary(st, now) {
+  const p = passFix(st, now);
+  const tier = passTier(p);
+  const lastDay = (passSeason(now) + 1) * PASS_DAYS - 1;
+  return { season: Math.max(1, p.season - PASS_EPOCH + 1), pts: p.pts, tier, tiers: PASS_TIERS, tierPts: PASS_TIER_PTS, inTier: tier >= PASS_TIERS ? PASS_TIER_PTS : p.pts - tier * PASS_TIER_PTS, premium: p.premium, claimable: passClaimable(p), endsMs: msToNextDay(now) + Math.max(0, lastDay - dayOf(now)) * 86400e3 };
+}
+
 // Player level: XP from everything you do; every level pays, every 5th level pays big.
 const xpNeed = (lvl) => 40 + lvl * 30;
 const levelReward = (lvl) => (lvl % 5 === 0 ? { spins: 20 + lvl, gems: 15, tickets: 2 } : { spins: 5 + Math.floor(lvl / 3), gems: 2 });
@@ -235,6 +368,15 @@ function applyGive(st, give, now) {
   if (g.petiscos) st.petiscos += g.petiscos;
   if (g.shields) st.shields = Math.min(MAX_SHIELDS, st.shields + g.shields);
   if (g.tickets) st.tickets = Math.min(MAX_TICKETS, (st.tickets || 0) + g.tickets);
+  if (g.pwheel) st.pwheel = (st.pwheel || 0) + g.pwheel;
+  if (g.outfit) {
+    const of = outfitFix(st);
+    if (of.owned.includes(g.outfit)) { g.outfitDup = true; g.gems = (g.gems || 0) + OUTFIT_DUP_GEMS; st.gems += OUTFIT_DUP_GEMS; }
+    else { of.owned.push(g.outfit); g.outfitNew = true; }
+  }
+  if (g.passPremium) { const p = passFix(st, now || Date.now()); p.premium = true; }
+  if (g.passTiers) passAdd(st, g.passTiers * PASS_TIER_PTS, now || Date.now());
+  if (g.stk) g.chest = openStickerChest(st, g.stk, now || Date.now());
   return g;
 }
 
@@ -466,6 +608,7 @@ class Game {
     st.stats.minis = (st.stats.minis || 0) + 1;
     missionProgress(st, 'mini', 1);
     addXp(st, 6 + stars * 2, now);
+    passAdd(st, PASS_PTS.mini, now);
     this.save(u, now);
     return { score: sc, got, tickets: st.tickets, best: Math.max(best0, sc), newRecord, stars };
   }
@@ -512,6 +655,11 @@ class Game {
       player: { level: (st.player && st.player.level) || 1, xp: (st.player && st.player.xp) || 0, xpNext: xpNeed((st.player && st.player.level) || 1), lastUp: (st.player && st.player.lastUp) || null, nextReward: levelReward(((st.player && st.player.level) || 1) + 1) },
       winStreak: st.winStreak || 0, achievements: ACHIEVEMENTS.map((a) => ({ id: a.id, name: a.name, desc: a.desc, gems: a.gems, done: !!(st.ach && st.ach[a.id]) })), achNew: st.achNew || [], welcome: st.welcome || null, miniBest: st.miniBest || {},
       dailyEvent: { ...dailyEvent(now), endsMs: msToNextDay(now) },
+      outfit: { on: outfitFix(st).on, owned: outfitFix(st).owned, list: OUTFITS.map((o) => ({ id: o.id, idx: o.idx, name: o.name, desc: o.desc, gems: o.gems || 0, pix: o.pix || null, pass: !!o.pass, perk: o.perkText })) },
+      pass: passSummary(st, now),
+      album: { counts: albumFix(st).c, stars: albumFix(st).stars, done: albumFix(st).done.length, total: STICKERS.length, have: albumFix(st).c.filter((x) => x > 0).length, albums: ALBUMS.length, swapCost: STAR_SWAP },
+      pwheel: st.pwheel || 0,
+      raidExtra: st.raidExtra && st.raidExtra.until > now ? { gems: RAID_EXTRA_GEMS, ms: st.raidExtra.until - now } : null,
       timed: this.timedInfo(st, now), minigames: Object.fromEntries(Object.entries(MINI).map(([k, d]) => [k, { name: d.name, dur: d.dur }])),
       unread: counts.unread, giftsPending: counts.gifts, friendRequests: counts.requests, lastEventId: counts.lastEvent || 0,
     };
@@ -536,7 +684,7 @@ class Game {
     if (typeof st.ticketProg !== 'number') st.ticketProg = 0;
     st.ticketProg = Math.min(TICKET_EVERY_SPINS * 2, st.ticketProg + bet);
     while (st.ticketProg >= TICKET_EVERY_SPINS && (st.tickets || 0) < MAX_TICKETS) {
-      const n = Math.min(ticketsPerGoal(now), MAX_TICKETS - (st.tickets || 0));
+      const n = Math.min(ticketsPerGoal(now) + outfitBonus(st, 'tickets'), MAX_TICKETS - (st.tickets || 0));
       st.tickets = (st.tickets || 0) + n; ticketGoal += n; st.ticketProg -= TICKET_EVERY_SPINS;
     }
     if ((st.tickets || 0) < MAX_TICKETS && rand() < ticketChance(now)) { st.tickets++; ticketDrop = 1; }
@@ -570,6 +718,7 @@ class Game {
       res.coins = Math.floor((coins * 150 + bags * 600) * bet * vm);
       if (reels.filter((s) => s === SYM.ENERGY).length === 2) res.spins = 1 * bet;
     }
+    if (res.coins > 0) { const ob = outfitBonus(st, 'slot'); if (ob > 0) { res.outfit = Math.floor(res.coins * ob); res.coins += res.outfit; } }
     // golden spin (rare): everything this spin paid is tripled
     if (rand() < GOLDEN_SPIN_CHANCE && (res.coins > 0 || res.spins > 0)) { res.golden = true; res.coins *= 3; res.spins *= 3; res.gems *= 3; }
     // hot streak: consecutive paying spins
@@ -583,6 +732,7 @@ class Game {
     res.ticketsNow = st.tickets || 0;
     res.trail = trailAdd(st, bet + (res.triple && (res.action === 'attack' || res.action === 'raid') ? 5 * bet : 0), now);
     res.levelUp = addXp(st, bet + (res.triple ? 3 : 0), now);
+    passAdd(st, bet, now);
     this.save(u, now);
     return res;
   }
@@ -600,6 +750,7 @@ class Game {
     st.coins -= cost;
     if (dmg) { st.damaged[slot] = false; st.levels[slot] = Math.min(MAX_LEVEL, st.levels[slot] + 1); } else { st.levels[slot]++; st.stats.builds++; missionProgress(st, 'build', 1); }
     const levelUp = addXp(st, dmg ? 5 : 12 + st.levels[slot] * 4, now);
+    if (!dmg) passAdd(st, PASS_PTS.build, now);
     // surprise "obra" bonus: building sometimes pays something back (variable reward on the core loop)
     let bonus = null;
     if (!dmg && rand() < BUILD_BONUS_CHANCE) {
@@ -709,11 +860,16 @@ class Game {
           if (destroyed) reward *= 1.25;
         }
       } else { reward *= 0.35; ts.stats.blocks = (ts.stats.blocks || 0) + 1; }
+      // critical hammer: sometimes the hit lands perfectly and pays double
+      const crit = !blocked && rand() < CRIT_CHANCE;
+      if (crit) reward *= 2;
+      const ob = outfitBonus(st, 'attack'); if (ob > 0) reward *= 1 + ob;
       let petBonus = 0;
       if (petAwake(st, 'onca', now)) { petBonus = Math.floor(reward * petAttackBonus(st.pets.onca.level)); petXp(st, 'onca'); }
       const total = Math.floor(reward) + petBonus;
       st.coins += total;
       addXp(st, 8, now);
+      passAdd(st, PASS_PTS.attack, now);
       st.stats.attacks++;
       missionProgress(st, 'attack', 1);
       st.pending.attack = null;
@@ -726,7 +882,7 @@ class Game {
       }
       this.save(t, now, false);
       this.save(u, now);
-      return { blocked, slot: hitSlot, building: tName, levelBefore, levelAfter, destroyed, reward: total, petBonus, revenge, target: this.publicVillage(t) };
+      return { blocked, slot: hitSlot, building: tName, levelBefore, levelAfter, destroyed, reward: total, petBonus, revenge, crit, target: this.publicVillage(t) };
     });
   }
 
@@ -737,8 +893,9 @@ class Game {
     if (!p) throw err(409, 'no_raid', 'Você não tem um saque disponível.');
     if (p.spots) {
       const t = this.load(p.targetId);
-      return { target: t ? this.publicVillage(t) : null, digs: p.digs, dug: p.dug.map((i) => ({ spot: i, value: p.spots[i], kind: p.kinds[i] })), bet: p.bet };
+      return { target: t ? this.publicVillage(t) : null, digs: p.digs, dug: p.dug.map((i) => ({ spot: i, value: p.spots[i], kind: p.kinds[i], chest: (p.chests && p.chests[i]) || null })), bet: p.bet };
     }
+    st.raidExtra = null;
     const c = this.candidates(u, now, 8);
     const recent = new Set(st.recentTargets || []);
     let pool = [...c.real, ...c.bots, ...c.friends].filter((x) => x.row.id !== u.row.id);
@@ -754,6 +911,9 @@ class Game {
     p.spots = new Array(9); p.kinds = new Array(9);
     idx.forEach((spot, j) => { p.spots[spot] = roundNice(pot * shares[j]); p.kinds[spot] = kinds[j]; });
     p.targetId = t.row.id; p.dug = [];
+    // two spots also hide a sticker chest (the second one is sometimes golden)
+    const cs = shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    p.chests = {}; p.chests[cs[0]] = 'wood'; p.chests[cs[1]] = rand() < RAID_GOLD_CHEST ? 'gold' : 'wood';
     st.recentTargets = [t.row.id, ...(st.recentTargets || []).filter((x) => x !== t.row.id)].slice(0, 6);
     p.digs = 3 + (petAwake(st, 'quati', now) ? 1 : 0);
     p.petBonus = petAwake(st, 'quati', now) ? petRaidBonus(st.pets.quati.level) : 0;
@@ -768,16 +928,22 @@ class Game {
     if (!(spot >= 0 && spot < 9) || p.dug.includes(spot)) throw err(400, 'bad_spot', 'Lugar inválido.');
     p.dug.push(spot);
     const base = p.spots[spot];
-    const evk = dailyEvent(now).id === 'saque' ? 1.5 : 1;
+    const evk = (dailyEvent(now).id === 'saque' ? 1.5 : 1) * (1 + outfitBonus(st, 'raid'));
     const value = Math.floor(base * (1 + (p.petBonus || 0)) * evk);
     st.coins += value;
     const res = { spot, value, kind: p.kinds[spot], left: p.digs - p.dug.length, done: false };
+    const ck = p.chests && p.chests[spot];
+    if (ck) res.chest = openStickerChest(st, ck, now);
     if (p.dug.length >= p.digs) {
       res.done = true;
       const total = p.dug.reduce((a, i) => a + Math.floor(p.spots[i] * (1 + (p.petBonus || 0)) * evk), 0);
       res.total = total;
-      res.all = p.spots.map((v, i) => ({ spot: i, value: v, kind: p.kinds[i] }));
+      res.all = p.spots.map((v, i) => ({ spot: i, value: v, kind: p.kinds[i], chest: (p.chests && p.chests[i]) || null }));
       addXp(st, 8, now);
+      passAdd(st, PASS_PTS.raid, now);
+      // golden shovel offer: one more dig for gems, for a short while
+      st.raidExtra = { targetId: p.targetId, spots: p.spots, kinds: p.kinds, chests: p.chests || {}, dug: p.dug.slice(), mult: (1 + (p.petBonus || 0)) * evk, until: now + 120e3 };
+      res.extraGems = RAID_EXTRA_GEMS;
       st.stats.raids++;
       missionProgress(st, 'raid', 1);
       if (p.petBonus) petXp(st, 'quati');
@@ -795,6 +961,123 @@ class Game {
       });
     } else this.save(u, now);
     return res;
+  }
+
+  /** Golden shovel: after a raid, dig one more spot for gems (once). */
+  raidExtra(u, spot, now) {
+    const st = u.st;
+    const x = st.raidExtra;
+    if (!x || x.until < now) throw err(409, 'no_extra', 'A pá de ouro já passou. Faça outro saque!');
+    if (!(spot >= 0 && spot < 9) || x.dug.includes(spot)) throw err(400, 'bad_spot', 'Lugar inválido.');
+    if (st.gems < RAID_EXTRA_GEMS) throw err(400, 'no_gems', 'Gemas insuficientes.');
+    st.gems -= RAID_EXTRA_GEMS;
+    st.raidExtra = null;
+    const value = Math.floor(x.spots[spot] * x.mult);
+    st.coins += value;
+    const res = { spot, value, kind: x.kinds[spot], gems: RAID_EXTRA_GEMS };
+    if (x.chests[spot]) res.chest = openStickerChest(st, x.chests[spot], now);
+    if (value > st.stats.bestWin) st.stats.bestWin = value;
+    tx(this.db, () => {
+      const t = this.load(x.targetId);
+      if (t) { const lost = Math.min(value, Math.floor(t.st.coins * 0.15)); t.st.coins -= lost; this.save(t, now, false); }
+      this.save(u, now);
+    });
+    return res;
+  }
+
+  // ---------------------------------------------------------------- outfits
+  outfitBuy(u, id, now) {
+    const st = u.st, of = outfitFix(st);
+    const o = OUTFITS.find((x) => x.id === id);
+    if (!o) throw err(400, 'bad_outfit', 'Roupa inválida.');
+    if (of.owned.includes(id)) throw err(409, 'owned', 'Você já tem essa roupa.');
+    if (!o.gems) throw err(409, 'pix_only', 'Essa roupa é exclusiva: compre com PIX na loja.');
+    if (st.gems < o.gems) throw err(400, 'no_gems', 'Gemas insuficientes.');
+    st.gems -= o.gems; of.owned.push(id); of.on = id;
+    this.save(u, now);
+    return { id, on: id };
+  }
+  outfitEquip(u, id, now) {
+    const of = outfitFix(u.st);
+    if (!of.owned.includes(id)) throw err(409, 'locked', 'Você ainda não tem essa roupa.');
+    of.on = id;
+    this.save(u, now);
+    return { on: id };
+  }
+
+  // ---------------------------------------------------------------- album
+  albumInfo(st) {
+    const al = albumFix(st);
+    return { albums: ALBUMS.map((a, i) => ({ name: a.name, reward: a.reward, done: al.done.includes(i) })), stickers: STICKERS.map((s) => ({ name: s.name, sprite: s.sprite, rarity: s.rarity, album: s.album })), counts: al.c, stars: al.stars, swapCost: STAR_SWAP, grand: ALBUM_GRAND, grandDone: al.grand };
+  }
+  albumSwap(u, now) {
+    const st = u.st, al = albumFix(st);
+    if (al.stars < STAR_SWAP) throw err(400, 'no_stars', `Você precisa de ${STAR_SWAP} estrelas. Figurinhas repetidas viram estrelas.`);
+    const missing = STICKERS.filter((s) => al.c[s.i] === 0);
+    if (!missing.length) throw err(409, 'complete', 'Seu álbum já está completo!');
+    al.stars -= STAR_SWAP;
+    // lower rarities are more likely, but every missing sticker can come
+    const w = missing.map((s) => 6 - s.rarity);
+    let x = rand() * w.reduce((a, b) => a + b, 0), pickIdx = missing[0].i;
+    for (let k = 0; k < missing.length; k++) { x -= w[k]; if (x < 0) { pickIdx = missing[k].i; break; } }
+    const out = { kind: 'swap', name: 'Troca de estrelas', stickers: [], albums: [], grand: null };
+    grantSticker(st, pickIdx, now, out);
+    this.save(u, now);
+    return { chest: out };
+  }
+
+  // ---------------------------------------------------------------- pass
+  passInfo(st, now) {
+    const p = passFix(st, now);
+    const tiers = [];
+    for (let k = 1; k <= PASS_TIERS; k++) {
+      const f = passReward(k, false), pr = passReward(k, true);
+      const vm = (g) => (g.coinsVm ? { ...g, coins: roundNice(g.coinsVm * rewardMult(st.village)), coinsVm: undefined } : g);
+      tiers.push({ tier: k, free: vm(f), premium: vm(pr), freeClaimed: p.free.includes(k), premClaimed: p.prem.includes(k) });
+    }
+    return { ...passSummary(st, now), list: tiers, pts: PASS_PTS, spinPts: 1 };
+  }
+  passClaim(u, tier, track, now) {
+    const st = u.st, p = passFix(st, now);
+    const reached = passTier(p);
+    const got = [];
+    const claimOne = (k, prem) => {
+      if (k < 1 || k > reached) return;
+      if (prem) { if (!p.premium || p.prem.includes(k)) return; p.prem.push(k); }
+      else { if (p.free.includes(k)) return; p.free.push(k); }
+      got.push({ tier: k, premium: prem, give: applyGive(st, passReward(k, prem), now) });
+    };
+    if (track === 'all') { for (let k = 1; k <= reached; k++) { claimOne(k, false); claimOne(k, true); } }
+    else {
+      if (!(tier >= 1 && tier <= reached)) throw err(409, 'locked', 'Você ainda não chegou nesse nível do passe.');
+      if (track === 'premium' && !p.premium) throw err(409, 'no_premium', 'Ative o Passe Premium para pegar esse prêmio.');
+      claimOne(tier, track === 'premium');
+    }
+    if (!got.length) throw err(409, 'nothing', 'Nada para pegar agora.');
+    this.save(u, now);
+    return { got };
+  }
+
+  // ---------------------------------------------------------------- premium wheel (spins bought with PIX)
+  static PWHEEL = [
+    { label: '300 giros', give: { spins: 300 }, w: 22 }, { label: '150 gemas', give: { gems: 150 }, w: 18 },
+    { label: 'Baú do Carnaval', give: { stk: 'magic' }, w: 16 }, { label: 'Cofre de moedas', give: { coinsVm: 1500000 }, w: 15 },
+    { label: '800 giros', give: { spins: 800 }, w: 10 }, { label: 'Roupa Folia', give: { outfit: 'folia' }, w: 8 },
+    { label: 'Figurinha dourada', give: { stk: 'golden' }, w: 7 }, { label: 'JACKPOT', give: { spins: 2000, gems: 500 }, w: 4 },
+  ];
+  pwheelInfo(st) {
+    return Game.PWHEEL.map((s) => ({ label: s.label, give: s.give.coinsVm ? { coins: roundNice(s.give.coinsVm * rewardMult(st.village)) } : s.give }));
+  }
+  pwheelSpin(u, now) {
+    const st = u.st;
+    if ((st.pwheel || 0) < 1) throw err(400, 'no_pwheel', 'Você não tem giros da Roda Premium.');
+    st.pwheel--;
+    let x = randInt(Game.PWHEEL.reduce((a, s) => a + s.w, 0)), idx = 0;
+    for (let i = 0; i < Game.PWHEEL.length; i++) { x -= Game.PWHEEL[i].w; if (x < 0) { idx = i; break; } }
+    const got = applyGive(st, Game.PWHEEL[idx].give, now);
+    st.stats.pwheel = (st.stats.pwheel || 0) + 1;
+    this.save(u, now);
+    return { index: idx, got, left: st.pwheel };
   }
 
   // ---------------------------------------------------------------- daily wheel
@@ -822,9 +1105,9 @@ class Game {
 
   // ---------------------------------------------------------------- chests (coins) + gem shop
   static CHESTS = [
-    { id: 0, name: 'Baú de Madeira', base: 30000, give: { spins: 12 } },
-    { id: 1, name: 'Baú Dourado', base: 100000, give: { spins: 45, shields: 1, petiscos: 1 } },
-    { id: 2, name: 'Baú Mágico', base: 300000, give: { spins: 140, shields: 3, petiscos: 3, gems: 10 } },
+    { id: 0, name: 'Baú de Madeira', base: 30000, give: { spins: 12, stk: 'wood' } },
+    { id: 1, name: 'Baú Dourado', base: 100000, give: { spins: 45, shields: 1, petiscos: 1, stk: 'gold' } },
+    { id: 2, name: 'Baú Mágico', base: 300000, give: { spins: 140, shields: 3, petiscos: 3, gems: 10, stk: 'magic' } },
   ];
   chestList(st) { return Game.CHESTS.map((c) => ({ ...c, price: roundNice(c.base * rewardMult(st.village)) })); }
   chestBuy(u, kind, now) {
@@ -914,6 +1197,7 @@ class Game {
     if (!m || m.claimed || m.progress < m.target) throw err(409, 'not_ready', 'Missão ainda não concluída.');
     m.claimed = true;
     const got = applyGive(st, m.reward, now);
+    passAdd(st, PASS_PTS.mission, now);
     this.save(u, now);
     return { got };
   }
@@ -1026,4 +1310,4 @@ class Game {
   }
 }
 
-module.exports = { Game, SYM, BETS, MAX_SPINS, REGEN_MS, PETS, THEMES, themeOf, rewardMult, applyGive, newState, villageComplete, fmt };
+module.exports = { OUTFITS, STICKERS, ALBUMS, passFix, Game, SYM, BETS, MAX_SPINS, REGEN_MS, PETS, THEMES, themeOf, rewardMult, applyGive, newState, villageComplete, fmt };

@@ -49,6 +49,10 @@ Como o servidor valida um pagamento:
 
 Preços e pacotes: edite `CATALOG` em `src/pay.js`.
 
+Itens PIX novos da versão 5.0: `pass_premium` (R$ 14,90), `pass_plus` (R$ 29,90), `outfit_folia` (R$ 9,90),
+`outfit_rainha` (R$ 19,90), `pwheel_1` (R$ 4,90) e `pwheel_6` (R$ 19,90). Rotas novas: `/api/pass`, `/api/pass/claim`,
+`/api/album`, `/api/album/swap`, `/api/outfit/buy`, `/api/outfit/equip`, `/api/pwheel`, `/api/pwheel/spin`, `/api/raid/extra`.
+
 ## 4. Login com Google (opcional)
 
 1. No [Google Cloud Console](https://console.cloud.google.com/), configure a **Tela de consentimento OAuth**.

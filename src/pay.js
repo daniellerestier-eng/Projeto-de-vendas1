@@ -2,7 +2,7 @@
 const crypto = require('node:crypto');
 const { err, uuid } = require('./util');
 const { tx } = require('./db');
-const { applyGive, rewardMult } = require('./game');
+const { applyGive, rewardMult, passFix } = require('./game');
 
 /**
  * Catálogo de itens pagos (preço em centavos de R$). Edite à vontade.
@@ -20,7 +20,21 @@ const CATALOG = [
   { id: 'coins_s', title: 'Saco de moedas', price: 490, give: { coinsVm: 600000 }, icon: 'coins', tab: 'moedas' },
   { id: 'coins_m', title: 'Baú de moedas', price: 1490, give: { coinsVm: 2200000 }, tag: 'Popular', icon: 'coins', tab: 'moedas' },
   { id: 'coins_l', title: 'Cofre de moedas', price: 3990, give: { coinsVm: 7000000 }, tag: 'Melhor valor', icon: 'coins', tab: 'moedas' },
+  // Mega Atualização 2: Passe do Carnaval, roupas exclusivas da Capi e Roda da Sorte Premium
+  { id: 'pass_premium', title: 'Passe Premium', desc: 'Libera a trilha premium do Passe do Carnaval nesta temporada', price: 1490, give: { passPremium: 1 }, tag: 'TEMPORADA', icon: 'pass', tab: 'especial', kind: 'pass' },
+  { id: 'pass_plus', title: 'Passe Premium + 10 níveis', desc: 'Trilha premium e já sobe 10 níveis do passe', price: 2990, give: { passPremium: 1, passTiers: 10 }, tag: '+10 NÍVEIS', icon: 'pass', tab: 'especial', kind: 'pass' },
+  { id: 'outfit_folia', title: 'Roupa Folia', desc: 'Cocar de plumas · +1 ficha a cada barra cheia', price: 990, give: { outfit: 'folia' }, tag: 'EXCLUSIVA', icon: 'outfit_folia', tab: 'especial', outfit: 'folia' },
+  { id: 'outfit_rainha', title: 'Rainha da Bateria', desc: 'Coroa e colar de ouro · +10% moedas em tudo', price: 1990, give: { outfit: 'rainha' }, tag: 'LENDÁRIA', icon: 'outfit_rainha', tab: 'especial', outfit: 'rainha' },
+  { id: 'pwheel_1', title: '1 giro na Roda Premium', desc: 'Prêmios de até 2.000 giros', price: 490, give: { pwheel: 1 }, icon: 'pwheel', tab: 'especial' },
+  { id: 'pwheel_6', title: '6 giros na Roda Premium', desc: 'Pague 5, leve 6', price: 1990, give: { pwheel: 6 }, tag: '+1 GRÁTIS', icon: 'pwheel', tab: 'especial' },
 ];
+/** Items that make no sense to buy again right now (already owned / already active). */
+function owned(u, it, now = Date.now()) {
+  if (it.once && u.st.starterBought) return true;
+  if (it.outfit && u.st.outfit && Array.isArray(u.st.outfit.owned) && u.st.outfit.owned.includes(it.outfit)) return true;
+  if (it.kind === 'pass' && passFix(u.st, now).premium) return true;
+  return false;
+}
 
 class Payments {
   constructor(db, game, cfg) {
@@ -32,7 +46,7 @@ class Payments {
 
   catalogFor(u) {
     const vm = rewardMult(u.st.village);
-    return CATALOG.filter((it) => !(it.once && u.st.starterBought)).map((it) => ({
+    return CATALOG.filter((it) => !owned(u, it)).map((it) => ({
       id: it.id, title: it.title, desc: it.desc || null, price: it.price, tag: it.tag || null, icon: it.icon, tab: it.tab,
       give: it.give.coinsVm ? { ...it.give, coins: Math.round(it.give.coinsVm * vm / 1000) * 1000, coinsVm: undefined } : it.give,
     }));
@@ -62,6 +76,7 @@ class Payments {
     const it = CATALOG.find((c) => c.id === itemId);
     if (!it) throw err(400, 'bad_item', 'Item inválido.');
     if (it.once && u.st.starterBought) throw err(409, 'once', 'Essa oferta só pode ser comprada uma vez.');
+    if (owned(u, it, now)) throw err(409, 'owned', 'Você já tem esse item.');
     // Reuse a still-valid pending order for the same item (avoids many open PIX charges)
     const open = this.db.prepare(`SELECT * FROM orders WHERE user_id = ? AND item_id = ? AND status = 'pending' AND expires_at > ? ORDER BY created_at DESC LIMIT 1`).get(u.row.id, itemId, now + 60e3);
     if (open) return this.orderView(open);
