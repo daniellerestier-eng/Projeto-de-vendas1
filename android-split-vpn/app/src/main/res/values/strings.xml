@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Split Shield</string>
+    <string name="btn_import">Importar config WireGuard (.conf)</string>
+    <string name="btn_paste">Colar configuração</string>
+    <string name="btn_apps">Apps fora da VPN (split tunneling)</string>
+    <string name="sw_autostart">Reconectar após reiniciar o celular</string>
+    <string name="btn_killswitch">Kill switch do sistema (VPN sempre ativa)</string>
+    <string name="btn_battery">Liberar uso de bateria em segundo plano</string>
+    <string name="btn_test">Testar IP, país e fuso</string>
+    <string name="apps_title">Apps fora da VPN</string>
+    <string name="apps_hint">Marque os apps que devem acessar a internet FORA da VPN. Eles não enxergam a VPN, mas também não são protegidos por ela. Se a VPN estiver ligada, ela reconecta sozinha ao sair desta tela.</string>
+</resources>
